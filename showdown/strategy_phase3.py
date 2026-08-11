@@ -35,6 +35,21 @@ from showdown.strategy_common import (
 
 RULES_WITH_LOW_WINS = {"low_ball"}
 
+# Tunables. Calling needs to clear pot odds by a margin, not merely match
+# them: the equity model assumes opponents hold random numbers, but anyone
+# still putting money in multiway does not, and that optimism compounds once
+# per live opponent. A thin margin is how a stack leaks away one defensible
+# call at a time.
+CALL_MARGIN_BASE = 0.14
+CALL_MARGIN_PER_OPPONENT = 0.09
+PRE_REVEAL_EXTRA_MARGIN = 0.06  # the community card is still unknown
+IN_POSITION_DISCOUNT = 0.03
+
+VALUE_BAR_BASE = 0.58
+VALUE_BAR_PER_OPPONENT = 0.10
+RAISE_BAR_BASE = 0.76
+RAISE_BAR_PER_OPPONENT = 0.06
+
 
 # --------------------------------------------------------------------------
 # Rules and equity
@@ -234,7 +249,7 @@ def _no_bet_facing(
 
     # Value betting needs to beat everyone who calls, so the bar rises with
     # the number of players still live.
-    value_bar = 0.55 + 0.10 * (opponent_count - 1) - stance
+    value_bar = VALUE_BAR_BASE + VALUE_BAR_PER_OPPONENT * (opponent_count - 1) - stance
     if in_position:
         value_bar -= 0.04
 
@@ -270,11 +285,13 @@ def _facing_bet(
     # Margin over raw pot odds: money already in the pot is gone, but calling
     # multiway with a hand that is merely break-even against one player is how
     # a stack leaks away.
-    margin = 0.03 + 0.04 * (opponent_count - 1) - stance
+    margin = CALL_MARGIN_BASE + CALL_MARGIN_PER_OPPONENT * (opponent_count - 1) - stance
+    if payload.round == "pre_reveal":
+        margin += PRE_REVEAL_EXTRA_MARGIN
     if in_position:
-        margin -= 0.02
+        margin -= IN_POSITION_DISCOUNT
 
-    raise_bar = 0.74 + 0.07 * (opponent_count - 1) - stance
+    raise_bar = RAISE_BAR_BASE + RAISE_BAR_PER_OPPONENT * (opponent_count - 1) - stance
     if (
         "raise" in payload.legal_actions
         and equity >= raise_bar
