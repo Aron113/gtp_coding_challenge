@@ -1,3 +1,5 @@
+import os
+import asyncio
 import base64
 import binascii
 import json
@@ -12,6 +14,7 @@ from urllib.parse import quote, quote_plus
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -764,11 +767,42 @@ def find_meeting_window(question: str) -> str:
 mcp_app = mcp_server.streamable_http_app()
 
 
+async def _keep_awake() -> None:
+    """Ping our own public URL so the host does not idle the instance out.
+
+    Phase 4 is decided partly by being reachable: a bot that fails the health
+    check immediately before the bracket sits out for zero, and a free tier
+    that has spun down can take far longer to answer its first request than a
+    health check is likely to wait. Inbound traffic is what resets the idle
+    timer, so the ping has to go to the public URL rather than to localhost.
+
+    Opt-in: set KEEPALIVE_URL to the service's own /health. Never fatal - any
+    failure here must not disturb the server it exists to protect.
+    """
+    target = os.getenv("KEEPALIVE_URL", "").strip()
+    if not target:
+        return
+    interval = float(os.getenv("KEEPALIVE_SECONDS", "600"))
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                await client.get(target)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(mcp_server.session_manager.run())
-        yield
+        keepalive = asyncio.create_task(_keep_awake())
+        try:
+            yield
+        finally:
+            keepalive.cancel()
 
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
