@@ -142,13 +142,14 @@ class Table:
     history: list[RecentHand] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        names = ["Dana", "Miles", "Theo"]
+        # Phase 4 anonymises seats and seats up to seven, so the table size is
+        # however many styles were handed in plus us.
         idx = 0
-        for s in range(4):
+        for s in range(len(self.styles) + 1):
             if s == self.hero_seat:
                 self.seats.append(Seat(s, "You", "hero", self.stack))
             else:
-                self.seats.append(Seat(s, names[idx], self.styles[idx], self.stack))
+                self.seats.append(Seat(s, f"Player {s + 1}", self.styles[idx], self.stack))
                 idx += 1
 
     def live(self) -> list[Seat]:
