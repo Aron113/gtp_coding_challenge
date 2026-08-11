@@ -11,6 +11,7 @@ import tiktoken
 # Encoding requirement from spec: o200k_base
 ENCODING = tiktoken.get_encoding("o200k_base")
 MAX_TOKENS = 1500
+NAME = "toolbox"
 
 
 def enforce_token_limit(response_text: str) -> str:
@@ -90,16 +91,9 @@ def solve_shape_count(image_base64: str) -> int:
 
 def solve_arithmetic(text: str) -> int | float:
     """Evaluates arithmetic expressions with mixed operators (+, -, *, /)."""
-    # Extract candidate mathematical substrings
-    # Matches patterns like "2 + 2", "15 * (3 + 4) / 2", etc.
-    math_match = re.search(r"[\d\.\s\+\-\*\/\(\)]+", text)
-    if math_match:
-        expr = math_match.group(0).strip()
-    else:
-        expr = text.strip()
-
-    # Clean non-math characters
-    cleaned = re.sub(r"[^0-9\+\-\*\/\.\(\) ]", "", expr).strip()
+    # Strip everything except math characters so surrounding words
+    # ("What is ... ?") don't break the expression into fragments.
+    cleaned = re.sub(r"[^0-9\+\-\*\/\.\(\)]", "", text).strip()
     result = sympy.sympify(cleaned).evalf()
     
     # Return int if it is an exact integer, else float
@@ -114,7 +108,7 @@ def answer_question(payload: Any) -> Any:
     Accepts text strings, dictionaries, or JSON payloads.
     """
     if payload is None:
-        return "Pip"
+        return NAME
 
     # Extract query text if payload is a dict / JSON object
     if isinstance(payload, dict):
@@ -129,7 +123,7 @@ def answer_question(payload: Any) -> Any:
         # Check if direct base64 image or shape payload is provided in dict
         if "image" in payload or "image_base64" in payload:
             b64 = payload.get("image") or payload.get("image_base64")
-            if "count" in text.lower():
+            if "how many" in text.lower() or "count" in text.lower():
                 return solve_shape_count(b64)
             return solve_shape(b64)
     else:
@@ -139,7 +133,7 @@ def answer_question(payload: Any) -> Any:
 
     # 1. Name query
     if "your name" in text_lower or "what is your name" in text_lower or "who are you" in text_lower:
-        return enforce_token_limit("Pip")
+        return enforce_token_limit(NAME)
 
     # 2. Shape / Shape Count query with base64 embedded in prompt
     # Long base64 PNG strings typically start with iVBORw0KGgo
@@ -159,4 +153,4 @@ def answer_question(payload: Any) -> Any:
             pass
 
     # Default fallback
-    return enforce_token_limit("Pip")
+    return enforce_token_limit(NAME)
