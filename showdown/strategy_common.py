@@ -65,20 +65,24 @@ def players_yet_to_act(payload: MoveRequest) -> int:
         start_seat = _next_active_seat(payload, payload.button_seat)
 
     action_order = _seat_cycle_from(payload, start_seat)
-    round_actions = [a for a in payload.current_hand_actions if a.round == payload.round]
-    acted_seats = {action.seat for action in round_actions}
-    if not round_actions:
-        acted_before_you = 0
-    else:
-        try:
-            your_index = action_order.index(payload.your_seat)
-        except ValueError:
-            return 0
-        acted_before_you = sum(
-            1 for seat in action_order[:your_index] if seat in acted_seats or seat not in live_seat_set
-        )
-    remaining = max(0, len(action_order) - acted_before_you - 1)
-    return remaining
+    try:
+        your_index = action_order.index(payload.your_seat)
+    except ValueError:
+        return 0
+
+    # Count only players who can still act behind us. The seating order keeps
+    # folded seats (players carries the whole table, not just the live hand),
+    # and counting those as "yet to act" made a four-handed pot look crowded
+    # long after it went heads-up - so the in-position gates below almost
+    # never opened.
+    acted_seats = {
+        action.seat for action in payload.current_hand_actions if action.round == payload.round
+    }
+    return sum(
+        1
+        for seat in action_order[your_index + 1 :]
+        if seat in live_seat_set and seat not in acted_seats
+    )
 
 
 def table_leader_delta(payload: MoveRequest) -> int:
