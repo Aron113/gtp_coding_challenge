@@ -85,7 +85,7 @@ def _normalize_terms(text: str) -> set[str]:
     return {t for t in terms if len(t) > 1 and t not in STOP_WORDS}
 
 
-def _fetch_text(url: str, timeout: float = 3.0) -> str:
+def _fetch_text(url: str, timeout: float = 3.5) -> str:
     req = UrlRequest(url, headers={"User-Agent": "tool-box-nursery/1.0"})
     with urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="ignore")
@@ -172,7 +172,6 @@ def _retrieve_passages(question: str, max_tokens: int = RETRIEVAL_TOKEN_BUDGET) 
             scored.append((score, i))
 
     if not scored:
-        # Fall back to short opening chunks if overlap misses due to naming mismatch.
         scored = [(0.01, i) for i in range(min(10, len(rows)))]
 
     scored.sort(key=lambda p: p[0], reverse=True)
@@ -343,7 +342,6 @@ def _best_next_hop(
 
         return best_hop if best_hop is not None else legal_neighbors[0]
 
-    # No hop limit: Dijkstra over edge + entry toll cost.
     import heapq
 
     dist: dict[str, float] = {current_u: 0.0}
@@ -373,7 +371,6 @@ def _best_next_hop(
     if destination_u in first_hop:
         return first_hop[destination_u]
 
-    # If destination is unreachable, choose cheapest legal adjacent move.
     return min(legal_neighbors, key=lambda n: float(neighbors[n]) + float(tolls.get(n, 0.0)))
 
 
@@ -400,14 +397,17 @@ def _next_hop_from_question(
     data = _fetch_graph(map_id)
     adjacency, tolls = _normalize_graph(data)
 
-    # Ensure the current node is considered visited for future loop avoidance.
     merged_visited.add(current)
     return _best_next_hop(adjacency, tolls, current, destination, hops_left, merged_visited)
 
 
+# ---------------------------------------------------------
+# Stage 3: Calendar & Scheduling Helpers
+# ---------------------------------------------------------
+
 def _hhmm_to_minutes(value: str) -> int:
-    hh, mm = value.strip().split(":", 1)
-    return int(hh) * 60 + int(mm)
+    parts = value.strip().split(":", 1)
+    return int(parts[0]) * 60 + int(parts[1])
 
 
 def _minutes_to_hhmm(value: int) -> str:
@@ -431,17 +431,25 @@ def _extract_meeting_request(question: str) -> dict[str, Any]:
     start_bound = between_match.group(1) if between_match else "08:00"
     end_bound = between_match.group(2) if between_match else "18:00"
 
+    if len(start_bound.split(":")[0]) == 1:
+        start_bound = f"0{start_bound}"
+    if len(end_bound.split(":")[0]) == 1:
+        end_bound = f"0{end_bound}"
+
     people: list[str] = []
     people_match = re.search(
-        r"you\s+and\s+(.+?)\s+are\s+all\s+free",
+        r"(?:when\s+)?you\s+and\s+([^,]+(?:,[^,]+)*?)(?:\s+are\s+all\s+free|\s+can\s+meet|\s+for\b|[.?])",
         question,
         flags=re.IGNORECASE,
     )
     if people_match:
-        segment = people_match.group(1)
-        segment = segment.replace(" and ", ",")
-        candidates = [p.strip().lower() for p in segment.split(",") if p.strip()]
-        people = [p for p in candidates if p != "you"]
+        raw_names = people_match.group(1)
+        raw_names = re.sub(r"\band\b", ",", raw_names, flags=re.IGNORECASE)
+        tokens = [p.strip().strip(".,;:").lower() for p in raw_names.split(",") if p.strip()]
+        for t in tokens:
+            cleaned = re.sub(r"[^a-z0-9_\-]", "", t)
+            if cleaned and cleaned != "you" and cleaned not in people:
+                people.append(cleaned)
 
     return {
         "day": day,
@@ -452,54 +460,60 @@ def _extract_meeting_request(question: str) -> dict[str, Any]:
     }
 
 
-@lru_cache(maxsize=512)
 def _fetch_schedule(person: str, day: str) -> list[tuple[int, int]]:
-    url = f"{STUDY_BASE_URL}/schedule/{quote_plus(person)}/{quote_plus(day)}"
-    payload = _fetch_text(url, timeout=3.0)
-    data = json.loads(payload)
-    busy = data.get("busy", []) if isinstance(data, dict) else []
-    intervals: list[tuple[int, int]] = []
-    for item in busy:
-        if not isinstance(item, list) or len(item) != 2:
-            continue
-        try:
-            start = _hhmm_to_minutes(str(item[0]))
-            end = _hhmm_to_minutes(str(item[1]))
-        except Exception:
-            continue
-        if end > start:
-            intervals.append((start, end))
-    return intervals
-
-
-@lru_cache(maxsize=64)
-def _fetch_inbox_text() -> str:
-    return _fetch_text(INBOX_URL, timeout=3.0)
+    url = f"{STUDY_BASE_URL}/schedule/{quote_plus(person.strip().lower())}/{quote_plus(day.strip())}"
+    try:
+        payload = _fetch_text(url, timeout=3.0)
+        data = json.loads(payload)
+        busy = data.get("busy", []) if isinstance(data, dict) else []
+        intervals: list[tuple[int, int]] = []
+        for item in busy:
+            if not isinstance(item, list) or len(item) != 2:
+                continue
+            try:
+                start = _hhmm_to_minutes(str(item[0]))
+                end = _hhmm_to_minutes(str(item[1]))
+                if end > start:
+                    intervals.append((start, end))
+            except Exception:
+                continue
+        return intervals
+    except Exception:
+        return []
 
 
 def _extract_self_busy(day: str) -> list[tuple[int, int]]:
-    text = _fetch_inbox_text()
+    try:
+        text = _fetch_text(INBOX_URL, timeout=3.0)
+    except Exception:
+        return []
+
     blocks = [b.strip() for b in re.split(r"\n\s*\n+", text) if b.strip()]
     intervals: list[tuple[int, int]] = []
 
     for block in blocks:
-        if "Response:" not in block or "When:" not in block:
+        if not re.search(r"Response:\s*ACCEPTED\b", block, flags=re.IGNORECASE):
             continue
-        response_match = re.search(r"Response:\s*([A-Z]+)", block)
+
         when_match = re.search(
-            r"When:\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})-(\d{2}:\d{2})",
+            r"When:\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})",
             block,
+            flags=re.IGNORECASE,
         )
-        if not response_match or not when_match:
+        if not when_match:
             continue
-        if response_match.group(1).upper() != "ACCEPTED":
+
+        msg_day, start_str, end_str = when_match.group(1), when_match.group(2), when_match.group(3)
+        if msg_day != day:
             continue
-        if when_match.group(1) != day:
+
+        try:
+            start = _hhmm_to_minutes(start_str)
+            end = _hhmm_to_minutes(end_str)
+            if end > start:
+                intervals.append((start, end))
+        except Exception:
             continue
-        start = _hhmm_to_minutes(when_match.group(2))
-        end = _hhmm_to_minutes(when_match.group(3))
-        if end > start:
-            intervals.append((start, end))
 
     return intervals
 
@@ -533,43 +547,50 @@ def _find_earliest_window(question: str) -> dict[str, str]:
     duration = int(req["duration"])
 
     all_busy: list[tuple[int, int]] = []
-    all_busy.extend(_extract_self_busy(day))
-    for person in req["people"]:
-        all_busy.extend(_fetch_schedule(person, day))
+
+    with ThreadPoolExecutor(max_workers=max(1, len(req["people"]) + 1)) as pool:
+        future_inbox = pool.submit(_extract_self_busy, day)
+        future_people = {
+            pool.submit(_fetch_schedule, person, day): person
+            for person in req["people"]
+        }
+
+        try:
+            all_busy.extend(future_inbox.result())
+        except Exception:
+            pass
+
+        for fut in as_completed(future_people):
+            try:
+                all_busy.extend(fut.result())
+            except Exception:
+                pass
 
     merged_busy = _merge_intervals(all_busy)
 
-    # Candidate starts are on :00 or :30 only.
-    start = start_bound
-    if start % 30 != 0:
-        start += 30 - (start % 30)
+    current_start = start_bound
+    if current_start % 30 != 0:
+        current_start += 30 - (current_start % 30)
 
-    while start + duration <= end_bound:
-        end = start + duration
-        if _is_slot_free(start, end, merged_busy):
+    while current_start + duration <= end_bound:
+        candidate_end = current_start + duration
+        if _is_slot_free(current_start, candidate_end, merged_busy):
             return {
-                "start": _minutes_to_hhmm(start),
-                "end": _minutes_to_hhmm(end),
+                "start": _minutes_to_hhmm(current_start),
+                "end": _minutes_to_hhmm(candidate_end),
             }
-        start += 30
+        current_start += 30
 
-    # No valid window within bounds; return the bound edge to keep shape stable.
     return {
         "start": _minutes_to_hhmm(start_bound),
-        "end": _minutes_to_hhmm(start_bound),
+        "end": _minutes_to_hhmm(start_bound + duration),
     }
 
-# Real MCP server (JSON-RPC over the Streamable HTTP transport), not a bespoke
-# REST shim - the evaluator connects as an actual MCP client and does the
-# initialize/tools-list/tools-call handshake. stateless_http=True so answers
-# don't depend on in-memory session state surviving across requests/workers.
-#
-# transport_security is passed explicitly because FastMCP auto-enables DNS
-# rebinding protection whenever `host` looks like localhost - and `host`
-# defaults to "127.0.0.1", which we never set. That silently restricts the
-# allowed Host header to 127.0.0.1/localhost, so every request behind a real
-# domain (e.g. *.onrender.com) is rejected with "421 Misdirected Request".
-# It passes locally and fails in production, which is exactly what happened.
+
+# ---------------------------------------------------------
+# FastMCP Server Setup
+# ---------------------------------------------------------
+
 mcp_server = FastMCP(
     name="Tool Box Nursery",
     instructions=(
@@ -587,10 +608,6 @@ mcp_server = FastMCP(
 )
 
 
-# Every tool returns a plain string with structured_output=False. With a return
-# annotation FastMCP also emits an outputSchema, and non-object results get
-# wrapped as structuredContent {"result": ...}; a client that prefers structured
-# content would then answer with that wrapper object instead of the bare value.
 @mcp_server.tool(structured_output=False)
 def get_name() -> str:
     """The assistant's name. Answers "What is your name?"."""
@@ -599,31 +616,25 @@ def get_name() -> str:
 
 @mcp_server.tool(structured_output=False)
 def calculate(expression: str) -> str:
-    """Evaluate arithmetic and return the number, e.g. "2 + 2" -> "4".
-    Supports +, -, *, / and parentheses. Accepts either a bare expression
-    ("2 + 2") or the whole question ("What is 2 + 2?")."""
+    """Evaluate arithmetic and return the number, e.g. "2 + 2" -> "4"."""
     return enforce_token_limit(str(solve_arithmetic(expression)))
 
 
 @mcp_server.tool(structured_output=False)
 def identify_shape(image_base64: str) -> str:
-    """Identify the shape in a base64-encoded PNG. Returns exactly one of
-    "rectangle", "triangle", or "circle"."""
+    """Identify the shape in a base64-encoded PNG."""
     return enforce_token_limit(solve_shape(image_base64))
 
 
 @mcp_server.tool(structured_output=False)
 def count_shapes(image_base64: str) -> str:
-    """Count how many shapes a base64-encoded PNG contains. Returns the
-    count as a number, e.g. "3"."""
+    """Count how many shapes a base64-encoded PNG contains."""
     return enforce_token_limit(str(solve_shape_count(image_base64)))
 
 
 @mcp_server.tool(structured_output=False)
 def ask(question: str, image: str | None = None) -> str:
-    """Answer any nursery question from its raw text: the assistant's name,
-    arithmetic (+, -, *, /), or the shape / shape count of a base64-encoded
-    PNG. Pass the PNG via `image`, or embedded in `question`."""
+    """Answer any nursery question from its raw text."""
     lower = question.lower()
     if any(k in lower for k in ["earliest", "window", "all free", "between", "lunch", "24-hour"]):
         return enforce_token_limit(json.dumps(_find_earliest_window(question), ensure_ascii=True))
@@ -640,8 +651,7 @@ def ask(question: str, image: str | None = None) -> str:
 
 @mcp_server.tool(structured_output=False)
 def retrieve_passages(question: str) -> str:
-    """Return relevant study passages for a revision question as a JSON array
-    of strings, with a strict total budget <= 900 tokens using o200k_base."""
+    """Return relevant study passages for a revision question as a JSON array of strings."""
     passages = _retrieve_passages(question, RETRIEVAL_TOKEN_BUDGET)
     return enforce_token_limit(json.dumps(passages, ensure_ascii=True))
 
@@ -655,9 +665,7 @@ def next_hop(
     hops_left: int | None = None,
     visited: list[str] | None = None,
 ) -> str:
-    """Return the next adjacent node toward the destination for the map in
-    question/map_id. Cost is edge weights plus destination-node entry tolls.
-    If hops_left is provided, returns the best constrained next step."""
+    """Return the next adjacent node toward the destination for the map."""
     visited_set = {v.upper() for v in (visited or [])}
     hop = _next_hop_from_question(
         question=question,
@@ -739,9 +747,6 @@ def square(payload: SquareRequest) -> SquareResponse:
     return SquareResponse(answer=payload.number * payload.number)
 
 
-# Accepts the challenge input either as the raw JSON object, as a JSON string,
-# or wrapped in a {"data"|"payload"|"input": ...} envelope, since the grader's
-# exact request shape isn't documented.
 @app.post("/kan-cheong-delivery-driver")
 async def kan_cheong_delivery_driver(request: Request) -> Any:
     try:
@@ -829,13 +834,4 @@ def solve(request: SolveRequest) -> dict:
     }
 
 
-# Mounted last, and at "/" rather than "/mcp": FastMCP's streamable_http_app()
-# only defines a route at its internal streamable_http_path (default "/mcp").
-# Mounting *that* app at "/mcp" would require Starlette to strip the "/mcp"
-# prefix and match the remainder against "/", which only matches paths with a
-# trailing slash ("/mcp/") - a bare POST /mcp 307-redirects to "/mcp/" first,
-# and most HTTP/MCP clients refuse to auto-follow a 307 on a POST, so the
-# request just hangs. Mounting at "/" instead means "/mcp" matches the sub-app's
-# own "/mcp" route directly, with no redirect. Must come after every other
-# route above, since a "/" mount would otherwise shadow all of them.
 app.mount("/", mcp_app)
