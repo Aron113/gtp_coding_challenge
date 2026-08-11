@@ -5,16 +5,40 @@ import math
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
+from fastmcp import FastMCP
 
 from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
 from tool_box import answer_question
 
+# 1. Initialize FastMCP Server
+mcp = FastMCP("Tool Box Nursery")
+
+
+# 2. Register Nursery Tool with FastMCP
+@mcp.tool(
+    name="answer_question",
+    description="Answers nursery questions regarding name, math (+, -, *, /), and shapes (rectangle, triangle, circle, shape counts).",
+)
+def nursery_tool(question: str) -> str:
+    """Answers nursery questions."""
+    result = answer_question(question)
+    return str(result)
+
+
+# 3. Initialize FastAPI
 app = FastAPI(title="Tool Box Nursery", version="1.0.0")
 app.include_router(ghost_chains_router)
 app.include_router(showdown_router)
+
+# 4. Mount FastMCP at /mcp
+# This provides the necessary SSE streams, message handling, and session lifecycles
+mcp_asgi_app = mcp.http_app(path="/mcp")
+app.mount("/mcp", mcp_asgi_app)
+
+
+# --- Supporting Endpoints ---
 
 
 class SquareRequest(BaseModel):
@@ -32,30 +56,6 @@ class SolveRequest(BaseModel):
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.get("/mcp")
-def mcp_get(question: str | None = None) -> JSONResponse:
-    answer = answer_question(question or "")
-    return JSONResponse({"answer": answer})
-
-
-@app.post("/mcp", response_model=None)
-async def mcp_post(request: Request) -> Response:
-    payload = None
-    try:
-        payload = await request.json()
-    except Exception:
-        body_bytes = await request.body()
-        payload = body_bytes.decode("utf-8", errors="ignore")
-
-    wants_plain_text = "text/plain" in request.headers.get("accept", "").lower()
-    answer = answer_question(payload)
-
-    if wants_plain_text:
-        return PlainTextResponse(str(answer))
-
-    return JSONResponse({"answer": answer})
 
 
 @app.post("/event")
