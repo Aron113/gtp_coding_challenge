@@ -21,24 +21,23 @@ except ModuleNotFoundError:
 # REST shim - the evaluator connects as an actual MCP client and does the
 # initialize/tools-list/tools-call handshake. stateless_http=True so answers
 # don't depend on in-memory session state surviving across requests/workers.
-mcp_server = FastMCP(
-    name="Tool Box Nursery",
-    instructions=(
-        "A nursery-stage assistant. Call `ask` with the question text "
-        "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
-        "'How many shapes are in this image?'). For shape questions, either "
-        "embed the base64-encoded PNG directly in `question` or pass it via "
-        "`image`."
-    ),
-    stateless_http=True,
-)
+if FastMCP is not None:
+    mcp_server = FastMCP(
+        name="Tool Box Nursery",
+        instructions=(
+            "A nursery-stage assistant. Call `ask` with the question text "
+            "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
+            "'How many shapes are in this image?'). For shape questions, either "
+            "embed the base64-encoded PNG directly in `question` or pass it via "
+            "`image`."
+        ),
+        stateless_http=True,
+    )
 
     @mcp_server.tool()
     def ask(question: str, image: str | None = None) -> str | int | float:
         """Answer a nursery question: the bot's name, arithmetic (+, -, *, /),
-        or the shape / shape count in a base64-encoded PNG. Returns the bot's
-        name as a string, an arithmetic result as a number, a shape as one of
-        "rectangle", "triangle", "circle", or a shape count as an integer."""
+        or the shape / shape count in a base64-encoded PNG."""
         payload: dict[str, Any] = {"question": question}
         if image:
             payload["image"] = image
@@ -60,6 +59,8 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
 app.include_router(showdown_router)
+if mcp_app is not None:
+    app.mount("/mcp", mcp_app)
 
 
 class SquareRequest(BaseModel):

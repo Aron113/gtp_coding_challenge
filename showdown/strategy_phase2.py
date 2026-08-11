@@ -18,11 +18,105 @@ def choose_move(payload: MoveRequest) -> MoveResponse:
     opponent = find_opponent(payload)
     stats = build_opponent_stats(payload, opponent.seat)
 
-    if payload.round == "post_reveal" and payload.community_number is not None:
+    if payload.table_rule == "low_ball":
+        if payload.round == "post_reveal" and payload.community_number is not None:
+            move = _decide_low_ball_post_reveal(payload, stats, opponent.name)
+        else:
+            move = _decide_low_ball_pre_reveal(payload, stats, opponent.name)
+    elif payload.round == "post_reveal" and payload.community_number is not None:
         move = _decide_post_reveal(payload, stats)
     else:
         move = _decide_pre_reveal(payload, stats)
     return finalize_move(payload, move)
+
+
+def _decide_low_ball_pre_reveal(
+    payload: MoveRequest, stats: OpponentStats, opponent_name: str
+) -> MoveResponse:
+    number = payload.your_number
+    to_call = payload.to_call
+    risk_ratio = to_call / max(payload.your_stack, 1)
+    pot_ratio = to_call / max(payload.pot + to_call, 1)
+    is_nadia = opponent_name.lower() == "nadia"
+
+    if to_call == 0:
+        if "bet" in payload.legal_actions and number <= 3:
+            pressure = 0.08 if is_nadia else 0.12
+            return raise_like(payload, "bet", pressure=pressure)
+        return MoveResponse(action="check")
+
+    if number <= 2:
+        if "raise" in payload.legal_actions and risk_ratio <= 0.14 and not is_nadia:
+            return raise_like(payload, "raise", pressure=0.1)
+        return MoveResponse(action="call")
+
+    if number == 3:
+        if risk_ratio <= 0.12 or pot_ratio <= 0.18:
+            return MoveResponse(action="call")
+        return MoveResponse(action="fold")
+
+    if number == 4 and not is_nadia and risk_ratio <= 0.08 and pot_ratio <= 0.12:
+        return MoveResponse(action="call")
+
+    if (
+        stats.sample_size >= 8
+        and stats.pre_raise_rate >= 0.5
+        and number <= 4
+        and risk_ratio <= 0.06
+        and pot_ratio <= 0.08
+    ):
+        return MoveResponse(action="call")
+
+    return MoveResponse(action="fold")
+
+
+def _decide_low_ball_post_reveal(
+    payload: MoveRequest, stats: OpponentStats, opponent_name: str
+) -> MoveResponse:
+    number = payload.your_number
+    to_call = payload.to_call
+    equity = _post_reveal_equity(payload)
+    stack_risk = to_call / max(payload.your_stack, 1)
+    pot_odds = to_call / max(payload.pot + to_call, 1)
+    is_pair = payload.community_number == number
+    is_nadia = opponent_name.lower() == "nadia"
+
+    if is_pair:
+        if to_call == 0:
+            return MoveResponse(action="check")
+        if stack_risk <= 0.03 and pot_odds <= 0.05 and "call" in payload.legal_actions:
+            return MoveResponse(action="call")
+        return MoveResponse(action="fold")
+
+    if to_call == 0:
+        if "bet" in payload.legal_actions and number <= 3 and equity >= 0.78:
+            pressure = 0.07 if is_nadia else 0.1
+            return raise_like(payload, "bet", pressure=pressure)
+        return MoveResponse(action="check")
+
+    bluff_bonus = 0.0
+    if not is_nadia and stats.sample_size >= 8 and stats.bluff_rate >= 0.3:
+        bluff_bonus = 0.05
+    effective_equity = equity + bluff_bonus
+
+    if number <= 2:
+        if "raise" in payload.legal_actions and effective_equity >= 0.9 and stack_risk <= 0.12 and not is_nadia:
+            return raise_like(payload, "raise", pressure=0.1)
+        if effective_equity >= pot_odds + 0.03 and stack_risk <= 0.3:
+            return MoveResponse(action="call")
+        return MoveResponse(action="fold")
+
+    if number == 3:
+        if effective_equity >= pot_odds + 0.08 and stack_risk <= 0.16:
+            return MoveResponse(action="call")
+        return MoveResponse(action="fold")
+
+    if number == 4 and not is_nadia:
+        if effective_equity >= pot_odds + 0.12 and stack_risk <= 0.08:
+            return MoveResponse(action="call")
+        return MoveResponse(action="fold")
+
+    return MoveResponse(action="fold")
 
 
 def _decide_pre_reveal(payload: MoveRequest, stats: OpponentStats) -> MoveResponse:
