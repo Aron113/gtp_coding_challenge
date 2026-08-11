@@ -1,282 +1,162 @@
-import ast
 import base64
-import math
+import io
 import re
-import struct
-import zlib
 from typing import Any
+import cv2
+import numpy as np
+from PIL import Image
+import sympy
+import tiktoken
 
-NAME = "ghost"
-
-
-def _looks_like_base64(value: str) -> bool:
-    if not value:
-        return False
-    stripped = value.strip()
-    if stripped.startswith("data:image"):
-        return True
-    if stripped.startswith("iVBORw"):
-        return True
-    return bool(re.fullmatch(r"[A-Za-z0-9+/=]+", stripped)) and len(stripped) % 4 == 0
+# Encoding requirement from spec: o200k_base
+ENCODING = tiktoken.get_encoding("o200k_base")
+MAX_TOKENS = 1500
 
 
-def extract_text(payload: Any) -> str:
-    if payload is None:
-        return ""
-    if isinstance(payload, str):
-        return payload.strip()
-    if isinstance(payload, dict):
-        for key in ("text", "prompt", "question", "query", "input", "message", "content", "request"):
-            value = payload.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        if any(key in payload for key in ("image", "png", "base64", "data")):
-            return "What shape is this?"
-        if "payload" in payload and isinstance(payload["payload"], dict):
-            return extract_text(payload["payload"])
-    return ""
+def enforce_token_limit(response_text: str) -> str:
+    """Ensures responses never exceed 1500 tokens under o200k_base."""
+    tokens = ENCODING.encode(response_text)
+    if len(tokens) > MAX_TOKENS:
+        return ENCODING.decode(tokens[:MAX_TOKENS])
+    return response_text
 
 
-def is_shape_request(payload: Any) -> bool:
-    if isinstance(payload, dict):
-        if any(key in payload for key in ("image", "png", "base64", "data")):
-            return True
-        text = extract_text(payload)
-        return "shape" in text.lower() and "this" in text.lower()
-    return False
+def _process_image_contours(image_base64: str):
+    """Decodes base64 PNG and returns valid contours."""
+    # Strip any data URI prefix if present
+    if "base64," in image_base64:
+        image_base64 = image_base64.split("base64,")[1]
+
+    # Clean whitespace/newlines
+    image_base64 = re.sub(r"\s+", "", image_base64)
+
+    image_bytes = base64.b64decode(image_base64)
+    pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    cv_img = np.array(pil_image)
+    gray = cv2.cvtColor(cv_img, cv2.COLOR_RGB2GRAY)
+
+    # Threshold image to isolate shapes
+    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+
+    # Invert if background was detected as foreground
+    if np.sum(thresh == 255) > np.sum(thresh == 0):
+        thresh = cv2.bitwise_not(thresh)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Filter noise
+    return [c for c in contours if cv2.contourArea(c) > 40]
 
 
-def answer_question(payload: Any) -> Any:
-    if is_shape_request(payload):
-        return classify_shape(payload)
+def _classify_contour(contour) -> str:
+    """Classifies a contour into triangle, rectangle, or circle."""
+    peri = cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
+    num_vertices = len(approx)
 
-    text = extract_text(payload)
-    lower = text.lower()
-
-    if "what is your name" in lower:
-        return NAME
-
-    if any(op in text for op in "+-*/"):
-        try:
-            result = evaluate_expression(text)
-            if result is not None:
-                return result
-        except Exception:
-            pass
-
-    if "shape" in lower and "this" in lower:
-        return classify_shape(payload)
-
-    return "I don't know yet."
-
-
-def evaluate_expression(text: str) -> float | int | None:
-    expression = text
-    if "what is" in expression.lower():
-        expression = expression.split("what is", 1)[1]
-    expression = expression.strip().rstrip("?").strip()
-    if not expression:
-        return None
-
-    allowed = set("0123456789+-*/. ()")
-    if any(char not in allowed for char in expression):
-        return None
-
-    tree = ast.parse(expression, mode="eval")
-
-    def eval_node(node: ast.AST) -> float:
-        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-            return float(node.value)
-        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
-            value = eval_node(node.operand)
-            return value if isinstance(node.op, ast.UAdd) else -value
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            return eval_node(node.left) + eval_node(node.right)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub):
-            return eval_node(node.left) - eval_node(node.right)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
-            return eval_node(node.left) * eval_node(node.right)
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
-            return eval_node(node.left) / eval_node(node.right)
-        raise ValueError("unsupported expression")
-
-    result = eval_node(tree.body)
-    if isinstance(result, float) and result.is_integer():
-        return int(result)
-    return result
-
-
-def classify_shape(payload: Any) -> str:
-    if isinstance(payload, dict):
-        for key in ("image", "png", "base64", "data"):
-            value = payload.get(key)
-            if value:
-                return _classify_base64(value)
-        if "payload" in payload and isinstance(payload["payload"], dict):
-            return classify_shape(payload["payload"])
-
-    return _classify_base64(payload)
-
-
-def _classify_base64(value: Any) -> str:
-    if value is None:
+    if num_vertices == 3:
+        return "triangle"
+    elif num_vertices == 4:
         return "rectangle"
-    if isinstance(value, bytes):
-        data = value
     else:
-        text = str(value).strip()
-        if text.startswith("data:image"):
-            if ";base64," in text:
-                _, encoded = text.split(";base64,", 1)
-                data = base64.b64decode(encoded)
-            else:
-                data = base64.b64decode(text)
-        elif _looks_like_base64(text):
-            data = base64.b64decode(text)
-        else:
-            return "rectangle"
+        # Check circularity metric: 4 * pi * Area / Perimeter^2
+        area = cv2.contourArea(contour)
+        circularity = (4 * np.pi * area) / (peri * peri) if peri > 0 else 0
+        if circularity > 0.60 or num_vertices > 4:
+            return "circle"
+        return "rectangle"
 
+
+def solve_shape(image_base64: str) -> str:
+    """Identifies the prominent shape in a base64 PNG."""
     try:
-        pixels, width, height = _decode_png_pixels(data)
+        contours = _process_image_contours(image_base64)
+        if not contours:
+            return "rectangle"
+        primary = max(contours, key=cv2.contourArea)
+        return _classify_contour(primary)
     except Exception:
         return "rectangle"
 
-    if width <= 0 or height <= 0:
-        return "rectangle"
 
-    foreground: list[tuple[int, int]] = []
-    for row in range(height):
-        for col in range(width):
-            pixel = pixels[row][col]
-            if _is_foreground(pixel):
-                foreground.append((col, row))
-
-    if not foreground:
-        return "rectangle"
-
-    xs = [x for x, _ in foreground]
-    ys = [y for _, y in foreground]
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    bbox_w = max_x - min_x + 1
-    bbox_h = max_y - min_y + 1
-    bbox_area = bbox_w * bbox_h
-    fill_ratio = len(foreground) / bbox_area
-
-    perimeter = 0
-    for x, y in foreground:
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                perimeter += 1
-                continue
-            if not _is_foreground(pixels[ny][nx]):
-                perimeter += 1
-
-    circularity = 4 * math.pi * len(foreground) / (perimeter * perimeter) if perimeter else 0.0
-
-    if circularity > 0.55:
-        return "circle"
-    if fill_ratio < 0.55:
-        return "triangle"
-    return "rectangle"
+def solve_shape_count(image_base64: str) -> int:
+    """Counts shapes in a base64 PNG."""
+    try:
+        contours = _process_image_contours(image_base64)
+        return len(contours)
+    except Exception:
+        return 0
 
 
-def _is_foreground(pixel: tuple[int, int, int, int]) -> bool:
-    r, g, b, a = pixel
-    if a < 200:
-        return False
-    if r > 240 and g > 240 and b > 240:
-        return False
-    return True
-
-
-def _decode_png_pixels(data: bytes) -> tuple[list[list[tuple[int, int, int, int]]], int, int]:
-    if data[:8] != b"\x89PNG\r\n\x1a\n":
-        raise ValueError("Not a PNG")
-
-    width = 0
-    height = 0
-    compressed = bytearray()
-    offset = 8
-    while offset < len(data):
-        length = struct.unpack(">I", data[offset:offset + 4])[0]
-        chunk_type = data[offset + 4:offset + 8]
-        chunk_data = data[offset + 8:offset + 8 + length]
-        if chunk_type == b"IHDR":
-            width, height, bit_depth, color_type, compression, filter_method, interlace = struct.unpack(
-                ">IIBBBBB", chunk_data
-            )
-        elif chunk_type == b"IDAT":
-            compressed.extend(chunk_data)
-        offset += 12 + length
-
-    if width == 0 or height == 0:
-        raise ValueError("Invalid PNG")
-
-    image_data = zlib.decompress(bytes(compressed))
-    bytes_per_pixel = 4 if color_type == 6 else 3
-    row_bytes = width * bytes_per_pixel
-    pixels: list[list[tuple[int, int, int, int]]] = []
-    offset = 0
-    prev_row = bytearray(row_bytes)
-    for _ in range(height):
-        filter_type = image_data[offset]
-        offset += 1
-        raw_row = image_data[offset:offset + row_bytes]
-        offset += row_bytes
-        row = _reconstruct_scanline(filter_type, raw_row, prev_row, bytes_per_pixel)
-        pixels.append(row)
-        prev_row = row
-
-    return pixels, width, height
-
-
-def _reconstruct_scanline(
-    filter_type: int,
-    raw_row: bytes,
-    previous_row: bytearray,
-    bytes_per_pixel: int,
-) -> list[tuple[int, int, int, int]]:
-    row_len = len(raw_row)
-    recon = bytearray(row_len)
-    if filter_type == 0:
-        recon[:] = raw_row
-    elif filter_type == 1:
-        for i in range(row_len):
-            left = recon[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
-            recon[i] = (raw_row[i] + left) & 0xFF
-    elif filter_type == 2:
-        for i in range(row_len):
-            up = previous_row[i] if len(previous_row) else 0
-            recon[i] = (raw_row[i] + up) & 0xFF
-    elif filter_type == 3:
-        for i in range(row_len):
-            left = recon[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
-            up = previous_row[i] if len(previous_row) else 0
-            recon[i] = (raw_row[i] + ((left + up) // 2)) & 0xFF
-    elif filter_type == 4:
-        for i in range(row_len):
-            left = recon[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
-            up = previous_row[i] if len(previous_row) else 0
-            up_left = previous_row[i - bytes_per_pixel] if i >= bytes_per_pixel and len(previous_row) else 0
-            pa = abs(left - up)
-            pb = abs(left - up_left)
-            pc = abs(up - up_left)
-            if pa <= pb and pa <= pc:
-                predictor = left
-            elif pb <= pc:
-                predictor = up_left
-            else:
-                predictor = up
-            recon[i] = (raw_row[i] + predictor) & 0xFF
+def solve_arithmetic(text: str) -> int | float:
+    """Evaluates arithmetic expressions with mixed operators (+, -, *, /)."""
+    # Extract candidate mathematical substrings
+    # Matches patterns like "2 + 2", "15 * (3 + 4) / 2", etc.
+    math_match = re.search(r"[\d\.\s\+\-\*\/\(\)]+", text)
+    if math_match:
+        expr = math_match.group(0).strip()
     else:
-        raise ValueError("Unsupported PNG filter")
+        expr = text.strip()
 
-    pixels = []
-    for i in range(0, len(recon), bytes_per_pixel):
-        if bytes_per_pixel == 3:
-            pixels.append((recon[i], recon[i + 1], recon[i + 2], 255))
-        else:
-            pixels.append((recon[i], recon[i + 1], recon[i + 2], recon[i + 3]))
-    return pixels
+    # Clean non-math characters
+    cleaned = re.sub(r"[^0-9\+\-\*\/\.\(\) ]", "", expr).strip()
+    result = sympy.sympify(cleaned).evalf()
+    
+    # Return int if it is an exact integer, else float
+    if float(result).is_integer():
+        return int(result)
+    return float(result)
+
+
+def answer_question(payload: Any) -> Any:
+    """
+    Main dispatch function for Stage 1 Nursery questions.
+    Accepts text strings, dictionaries, or JSON payloads.
+    """
+    if payload is None:
+        return "Pip"
+
+    # Extract query text if payload is a dict / JSON object
+    if isinstance(payload, dict):
+        text = str(
+            payload.get("question")
+            or payload.get("prompt")
+            or payload.get("text")
+            or payload.get("message")
+            or payload.get("query")
+            or ""
+        )
+        # Check if direct base64 image or shape payload is provided in dict
+        if "image" in payload or "image_base64" in payload:
+            b64 = payload.get("image") or payload.get("image_base64")
+            if "count" in text.lower():
+                return solve_shape_count(b64)
+            return solve_shape(b64)
+    else:
+        text = str(payload)
+
+    text_lower = text.lower()
+
+    # 1. Name query
+    if "your name" in text_lower or "what is your name" in text_lower or "who are you" in text_lower:
+        return enforce_token_limit("Pip")
+
+    # 2. Shape / Shape Count query with base64 embedded in prompt
+    # Long base64 PNG strings typically start with iVBORw0KGgo
+    b64_match = re.search(r"(?:iVBORw0KGgo[A-Za-z0-9+/=]+|[A-Za-z0-9+/]{80,}={0,2})", text)
+    if b64_match or "shape" in text_lower:
+        if b64_match:
+            b64_data = b64_match.group(0)
+            if "how many" in text_lower or "count" in text_lower:
+                return solve_shape_count(b64_data)
+            return enforce_token_limit(solve_shape(b64_data))
+
+    # 3. Arithmetic / Sums query (+, -, *, /)
+    if any(op in text for op in ["+", "-", "*", "/"]) or re.search(r"\d", text):
+        try:
+            return solve_arithmetic(text)
+        except Exception:
+            pass
+
+    # Default fallback
+    return enforce_token_limit("Pip")

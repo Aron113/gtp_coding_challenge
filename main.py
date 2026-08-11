@@ -1,19 +1,19 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, Response
 import base64
 import binascii
 import json
 import math
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from showdown.router import router as showdown_router
 from tool_box import answer_question
 
-
 app = FastAPI(title="Tool Box Nursery", version="1.0.0")
 app.include_router(showdown_router)
+
 
 class SquareRequest(BaseModel):
     number: int | float
@@ -21,6 +21,11 @@ class SquareRequest(BaseModel):
 
 class SquareResponse(BaseModel):
     answer: int | float
+
+
+class SolveRequest(BaseModel):
+    payload: str
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -39,7 +44,8 @@ async def mcp_post(request: Request) -> Response:
     try:
         payload = await request.json()
     except Exception:
-        payload = None
+        body_bytes = await request.body()
+        payload = body_bytes.decode("utf-8", errors="ignore")
 
     wants_plain_text = "text/plain" in request.headers.get("accept", "").lower()
     answer = answer_question(payload)
@@ -52,20 +58,31 @@ async def mcp_post(request: Request) -> Response:
 
 @app.post("/event")
 async def event(request: Request) -> dict[str, bool]:
-    await request.json()
+    """Telemetry receiver for run progress events."""
+    try:
+        data = await request.json()
+        problem = data.get("problem", "unknown")
+        attempt = data.get("attempt", 1)
+        print(f"[Telemetry] Problem: {problem} | Attempt: {attempt}")
+    except Exception:
+        pass
     return {"ok": True}
 
 
-@app.post("/square")
-def square(number: int | float) -> dict[str, int | float]:
-    return {"answer": number * number}
+@app.post("/callback")
+async def callback(request: Request) -> dict[str, Any]:
+    """Evaluation result JSON receiver."""
+    try:
+        data = await request.json()
+        print(f"[Evaluation Result] {data}")
+    except Exception:
+        pass
+    return {"status": "ok"}
+
+
 @app.post("/square", response_model=SquareResponse)
 def square(payload: SquareRequest) -> SquareResponse:
     return SquareResponse(answer=payload.number * payload.number)
-
-
-class SolveRequest(BaseModel):
-    payload: str
 
 
 PRIORITY_MAP = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
@@ -120,10 +137,14 @@ def solve(request: SolveRequest) -> dict:
         decoded = base64.b64decode(request.payload)
         data = json.loads(decoded)
     except (binascii.Error, ValueError, UnicodeDecodeError):
-        raise HTTPException(status_code=400, detail="payload must be base64-encoded JSON")
+        raise HTTPException(
+            status_code=400, detail="payload must be base64-encoded JSON"
+        )
 
     adapt_output = build_adapt_output(data.get("adaptInput", {}))
-    slo_output = build_slo_output(data.get("heartbeats", []), data.get("sloQuery", {}))
+    slo_output = build_slo_output(
+        data.get("heartbeats", []), data.get("sloQuery", {})
+    )
 
     return {
         "adaptOutput": adapt_output,
