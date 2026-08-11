@@ -19,6 +19,7 @@ from pydantic import BaseModel
 import tiktoken
 
 from ghost_chains import router as ghost_chains_router
+from kan_chiong_delivery import solve as kan_chiong_solve
 from showdown.router import router as showdown_router
 from tool_box import (
     NAME,
@@ -568,6 +569,29 @@ async def callback(request: Request) -> dict[str, Any]:
 @app.post("/square", response_model=SquareResponse)
 def square(payload: SquareRequest) -> SquareResponse:
     return SquareResponse(answer=payload.number * payload.number)
+
+
+# Accepts the challenge input either as the raw JSON object, as a JSON string,
+# or wrapped in a {"data"|"payload"|"input": ...} envelope, since the grader's
+# exact request shape isn't documented.
+@app.post("/kan-cheong-delivery-driver")
+async def kan_cheong_delivery_driver(request: Request) -> Any:
+    try:
+        body = (await request.body()).decode("utf-8")
+        data = json.loads(body)
+        if isinstance(data, str):
+            data = json.loads(data)
+        if isinstance(data, dict) and "start_coordinate" not in data:
+            for key in ("data", "payload", "input"):
+                if key in data:
+                    inner = data[key]
+                    data = json.loads(inner) if isinstance(inner, str) else inner
+                    break
+        return json.loads(kan_chiong_solve(json.dumps(data)))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"invalid input: {exc}")
 
 
 PRIORITY_MAP = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
