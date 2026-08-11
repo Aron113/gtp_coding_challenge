@@ -28,7 +28,6 @@ mcp_server = FastMCP(
         "`image`."
     ),
     stateless_http=True,
-    streamable_http_path="/",
 )
 
 
@@ -56,7 +55,6 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
 app.include_router(showdown_router)
-app.mount("/mcp", mcp_app)
 
 
 class SquareRequest(BaseModel):
@@ -170,3 +168,15 @@ def solve(request: SolveRequest) -> dict:
         "adaptOutput": adapt_output,
         "sloOutput": slo_output,
     }
+
+
+# Mounted last, and at "/" rather than "/mcp": FastMCP's streamable_http_app()
+# only defines a route at its internal streamable_http_path (default "/mcp").
+# Mounting *that* app at "/mcp" would require Starlette to strip the "/mcp"
+# prefix and match the remainder against "/", which only matches paths with a
+# trailing slash ("/mcp/") - a bare POST /mcp 307-redirects to "/mcp/" first,
+# and most HTTP/MCP clients refuse to auto-follow a 307 on a POST, so the
+# request just hangs. Mounting at "/" instead means "/mcp" matches the sub-app's
+# own "/mcp" route directly, with no redirect. Must come after every other
+# route above, since a "/" mount would otherwise shadow all of them.
+app.mount("/", mcp_app)

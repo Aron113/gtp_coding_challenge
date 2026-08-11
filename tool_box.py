@@ -110,8 +110,12 @@ def solve_arithmetic(text: str) -> int | float:
     cleaned = re.sub(r"[^0-9\+\-\*\/\.\(\)]", "", text).strip()
     result = sympy.sympify(cleaned).evalf()
     
-    # Return int if it is an exact integer, else float
-    if float(result).is_integer():
+    # Return int if it is an exact integer, else float. sympy.Float must be
+    # converted to a native Python float first - round() on a sympy.Float
+    # returns another sympy.Float, which isn't JSON-serializable and gets
+    # silently stringified (e.g. 52.5 -> the quoted text "52.500000").
+    result = float(result)
+    if result.is_integer():
         return int(result)
     return round(result, 6)
 
