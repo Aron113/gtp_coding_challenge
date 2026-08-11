@@ -1,7 +1,17 @@
+## Run locally
+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload
+
+## Endpoints (main.py)
+
+- `GET /` health check
+- `POST /mcp` MCP streamable-HTTP endpoint (Stage 1 "Nursery" tools: get_name, calculate, identify_shape, count_shapes)
+- `POST /solve` adaptive API gateway (V2 -> V1 adaptation + SLO metrics)
+- `POST /event` telemetry sink
+- `POST /callback` evaluation result sink
 
 Production start command:
 
