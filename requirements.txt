@@ -9,3 +9,4 @@ pillow>=10.2.0
 opencv-python-headless>=4.9.0.80
 numpy>=1.26.0
 mcp==1.29.0
+fastmcp
