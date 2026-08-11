@@ -359,12 +359,16 @@ class Table:
 
 
 def run(legs: int, seed: int, hands: int = 60) -> None:
-    rng = random.Random(seed)
     style_pool = ["solid", "station", "maniac", "rock"]
     totals: dict[str, list[int]] = {r: [] for r in TABLE_RULES}
     cleared: dict[str, int] = {r: 0 for r in TABLE_RULES}
 
     for rule in TABLE_RULES:
+        # Reset per rule so every rule sees the same opponents, seats and
+        # deals. Without this the rules differ by luck as much as by rule -
+        # "standard" and "pair_bounty" are scored identically here, so any gap
+        # between them is pure noise and a useful check on the harness itself.
+        rng = random.Random(seed)
         for leg in range(legs):
             styles = rng.sample(style_pool, 3)
             table = Table(
