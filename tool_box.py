@@ -40,15 +40,28 @@ def _process_image_contours(image_base64: str):
     if np.any(alpha < 250):
         mask = (alpha > 128).astype(np.uint8) * 255
     else:
-        # 2. Solid Background
-        gray = cv2.cvtColor(img_np[:, :, :3], cv2.COLOR_RGB2GRAY)
-        corners = [int(gray[0, 0]), int(gray[0, -1]), int(gray[-1, 0]), int(gray[-1, -1])]
-        bg_is_light = np.median(corners) > 127
+        # 2. Solid background: select pixels by how far their colour sits from
+        # the background rather than by brightness. A fixed brightness cutoff
+        # misses any shape lighter than it - a pale yellow (~243 grey) on white
+        # produced zero contours and silently fell back to a guessed answer.
+        # Sampling the border ring also handles dark/coloured backgrounds
+        # without a separate branch.
+        rgb = img_np[:, :, :3].astype(np.int16)
+        border = np.concatenate(
+            [rgb[0, :, :], rgb[-1, :, :], rgb[:, 0, :], rgb[:, -1, :]], axis=0
+        )
+        background = np.median(border, axis=0)
+        # 15 is low enough for very pale fills (a #E8F5E9 green sits only 23
+        # from white) while staying above the near-background pixels that
+        # anti-aliasing leaves along an edge. A flat PNG background carries no
+        # noise, so this does not create spurious contours.
+        distance = np.abs(rgb - background).max(axis=2)
+        mask = (distance > 15).astype(np.uint8) * 255
 
-        if bg_is_light:
-            _, mask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
-        else:
-            _, mask = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
+        # If the shape fills the border the sample is the shape, not the
+        # background, and the mask inverts. Detect that and flip it back.
+        if np.count_nonzero(mask) > 0.9 * mask.size:
+            mask = cv2.bitwise_not(mask)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return [c for c in contours if cv2.contourArea(c) >= 30]
@@ -109,11 +122,13 @@ def solve_arithmetic(text: str) -> int | float:
     normalized = (
         str(text)
         .replace("×", "*")
-        .replace("x", "*")
         .replace("÷", "/")
         .replace("−", "-")
         .replace("–", "-")
     )
+    # Only treat "x" as multiplication between two numbers ("6 x 7"), so words
+    # containing an x aren't rewritten into stray operators.
+    normalized = re.sub(r"(?<=\d)\s*[xX]\s*(?=\d)", "*", normalized)
 
     math_segments = re.findall(r"[\d\.\s\+\-\*\/\(\)]+", normalized)
     valid_expressions = []
@@ -121,7 +136,10 @@ def solve_arithmetic(text: str) -> int | float:
     for seg in math_segments:
         cand = seg.strip()
         if re.search(r"\d", cand) and re.search(r"[\+\-\*\/]", cand):
-            cleaned = cand.strip(" +-/*")
+            # Strip trailing operators, but only leading "+"/"*"//" - a leading
+            # "-" is the sign of the first operand ("-5 + 3"), and removing it
+            # silently flipped the result to 8.
+            cleaned = cand.rstrip(" +-/*").lstrip(" +*/")
             if cleaned:
                 valid_expressions.append(cleaned)
 
