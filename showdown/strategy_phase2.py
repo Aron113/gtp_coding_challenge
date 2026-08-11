@@ -17,12 +17,23 @@ def choose_move(payload: MoveRequest) -> MoveResponse:
 
     opponent = find_opponent(payload)
     stats = build_opponent_stats(payload, opponent.seat)
+    opponent_name = opponent.name.lower()
 
     if payload.table_rule == "low_ball":
         if payload.round == "post_reveal" and payload.community_number is not None:
             move = _decide_low_ball_post_reveal(payload, stats, opponent.name)
         else:
             move = _decide_low_ball_pre_reveal(payload, stats, opponent.name)
+    elif opponent_name == "remy" and payload.table_rule == "pair_bounty":
+        if payload.round == "post_reveal" and payload.community_number is not None:
+            move = _decide_remy_pair_bounty_post_reveal(payload, stats)
+        else:
+            move = _decide_remy_pair_bounty_pre_reveal(payload, stats)
+    elif opponent_name == "remy" and payload.table_rule == "wild_seven":
+        if payload.round == "post_reveal" and payload.community_number is not None:
+            move = _decide_remy_wild_seven_post_reveal(payload, stats)
+        else:
+            move = _decide_remy_wild_seven_pre_reveal(payload, stats)
     elif payload.round == "post_reveal" and payload.community_number is not None:
         move = _decide_post_reveal(payload, stats)
     else:
@@ -116,6 +127,125 @@ def _decide_low_ball_post_reveal(
             return MoveResponse(action="call")
         return MoveResponse(action="fold")
 
+    return MoveResponse(action="fold")
+
+
+def _decide_remy_pair_bounty_pre_reveal(
+    payload: MoveRequest, stats: OpponentStats
+) -> MoveResponse:
+    number = payload.your_number
+    to_call = payload.to_call
+    risk_ratio = to_call / max(payload.your_stack, 1)
+    pot_ratio = to_call / max(payload.pot + to_call, 1)
+
+    if to_call == 0:
+        if "bet" in payload.legal_actions and (
+            number >= 10 or (number >= 8 and stats.fold_rate >= 0.28)
+        ):
+            pressure = 0.12 if number < 12 else 0.18
+            return raise_like(payload, "bet", pressure=pressure)
+        return MoveResponse(action="check")
+
+    if "raise" in payload.legal_actions and number >= 12 and risk_ratio <= 0.24:
+        return raise_like(payload, "raise", pressure=0.16)
+
+    if number >= 9 and risk_ratio <= 0.34:
+        return MoveResponse(action="call")
+    if number >= 7 and pot_ratio <= 0.18 and risk_ratio <= 0.18:
+        return MoveResponse(action="call")
+    if (
+        stats.sample_size >= 6
+        and stats.pre_raise_rate >= 0.42
+        and number >= 6
+        and pot_ratio <= 0.1
+        and risk_ratio <= 0.1
+    ):
+        return MoveResponse(action="call")
+    return MoveResponse(action="fold")
+
+
+def _decide_remy_pair_bounty_post_reveal(
+    payload: MoveRequest, stats: OpponentStats
+) -> MoveResponse:
+    has_pair = _is_pair(payload)
+    equity = _post_reveal_equity(payload)
+    effective_equity = min(0.99, equity + (0.14 if has_pair else 0.0))
+
+    if payload.to_call == 0:
+        if "bet" in payload.legal_actions and (has_pair or effective_equity >= 0.7):
+            pressure = 0.22 if has_pair else 0.14
+            return raise_like(payload, "bet", pressure=pressure)
+        return MoveResponse(action="check")
+
+    pot_odds = payload.to_call / max(payload.pot + payload.to_call, 1)
+    stack_risk = payload.to_call / max(payload.your_stack, 1)
+    bluff_bonus = 0.04 if stats.sample_size >= 6 and stats.bluff_rate >= 0.24 else 0.0
+    effective_equity = min(0.99, effective_equity + bluff_bonus)
+
+    if has_pair and "raise" in payload.legal_actions and stack_risk <= 0.32:
+        return raise_like(payload, "raise", pressure=0.24)
+    if effective_equity >= pot_odds + 0.04 and stack_risk <= 0.42:
+        return MoveResponse(action="call")
+    if effective_equity >= pot_odds - 0.01 and stack_risk <= 0.1:
+        return MoveResponse(action="call")
+    return MoveResponse(action="fold")
+
+
+def _decide_remy_wild_seven_pre_reveal(
+    payload: MoveRequest, stats: OpponentStats
+) -> MoveResponse:
+    number = payload.your_number
+    to_call = payload.to_call
+    risk_ratio = to_call / max(payload.your_stack, 1)
+    pot_ratio = to_call / max(payload.pot + to_call, 1)
+
+    if number == 7:
+        if to_call == 0 and "bet" in payload.legal_actions:
+            return raise_like(payload, "bet", pressure=0.18)
+        if "raise" in payload.legal_actions and risk_ratio <= 0.3:
+            return raise_like(payload, "raise", pressure=0.22)
+        return MoveResponse(action="call")
+
+    if to_call == 0:
+        if "bet" in payload.legal_actions and (
+            number >= 11 or (number >= 9 and stats.fold_rate >= 0.3)
+        ):
+            return raise_like(payload, "bet", pressure=0.12 if number < 12 else 0.18)
+        return MoveResponse(action="check")
+
+    if "raise" in payload.legal_actions and number >= 12 and risk_ratio <= 0.2:
+        return raise_like(payload, "raise", pressure=0.15)
+    if number >= 10 and risk_ratio <= 0.3:
+        return MoveResponse(action="call")
+    if number >= 8 and pot_ratio <= 0.16 and risk_ratio <= 0.14:
+        return MoveResponse(action="call")
+    return MoveResponse(action="fold")
+
+
+def _decide_remy_wild_seven_post_reveal(
+    payload: MoveRequest, stats: OpponentStats
+) -> MoveResponse:
+    has_pair = _is_pair(payload)
+    equity = _post_reveal_equity(payload)
+    effective_equity = equity + (0.05 if stats.sample_size >= 6 and stats.bluff_rate >= 0.24 else 0.0)
+
+    if payload.to_call == 0:
+        if "bet" in payload.legal_actions and (has_pair or effective_equity >= 0.74):
+            pressure = 0.24 if has_pair else 0.14
+            return raise_like(payload, "bet", pressure=pressure)
+        return MoveResponse(action="check")
+
+    pot_odds = payload.to_call / max(payload.pot + payload.to_call, 1)
+    stack_risk = payload.to_call / max(payload.your_stack, 1)
+
+    if has_pair:
+        if "raise" in payload.legal_actions and stack_risk <= 0.34:
+            return raise_like(payload, "raise", pressure=0.25)
+        return MoveResponse(action="call")
+    if effective_equity >= pot_odds + 0.05 and stack_risk <= 0.35:
+        return MoveResponse(action="call")
+    if effective_equity >= pot_odds and stack_risk <= 0.1:
+        return MoveResponse(action="call")
     return MoveResponse(action="fold")
 
 
