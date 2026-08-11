@@ -10,39 +10,70 @@ from fastmcp import FastMCP
 
 from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
-from tool_box import answer_question
+import tool_box
 
-# 1. Initialize FastMCP with name only (no removed kwargs)
+# 1. Initialize FastMCP Server
 mcp = FastMCP(name="Tool Box Nursery")
 
 
-# 2. Register Nursery Tool
+# 2. Register explicit MCP Tools
+@mcp.tool(
+    name="get_name",
+    description="Returns the name of the child when asked 'What is your name?'",
+)
+def get_name() -> str:
+    return "toolbox"
+
+
+@mcp.tool(
+    name="calculate",
+    description="Performs arithmetic operations (+, -, *, /) and mixed calculations. Returns the numerical result.",
+)
+def calculate(expression: str) -> str | int | float:
+    return tool_box.solve_arithmetic(expression)
+
+
+@mcp.tool(
+    name="identify_shape",
+    description="Identifies whether a base64-encoded PNG image is a rectangle, triangle, or circle.",
+)
+def identify_shape(image_base64: str) -> str:
+    return tool_box.solve_shape(image_base64)
+
+
+@mcp.tool(
+    name="count_shapes",
+    description="Counts the total number of shapes present in a base64-encoded PNG image.",
+)
+def count_shapes(image_base64: str) -> int:
+    return tool_box.solve_shape_count(image_base64)
+
+
 @mcp.tool(
     name="answer_question",
-    description="Answers nursery questions regarding name, math, and shapes.",
+    description="General fallback tool for answering nursery questions about name, math, or shapes.",
 )
-def nursery_tool(question: str) -> str:
-    """Answers nursery questions."""
-    return str(answer_question(question))
+def answer_question(question: str) -> str:
+    return str(tool_box.answer_question(question))
 
 
-# 3. Create FastMCP ASGI app (path="/" because it will be mounted at /mcp)
+# 3. Setup FastMCP Sub-App
 mcp_app = mcp.http_app(path="/")
 
-# 4. Initialize FastAPI with FastMCP lifespan (vital for SSE/Stream transport)
+# 4. Initialize FastAPI with the MCP lifespan manager
 app = FastAPI(
     title="Tool Box Nursery",
     version="1.0.0",
     lifespan=mcp_app.lifespan,
 )
 
-# 5. Include existing routers and mount MCP sub-app
+# 5. Include Routers & Mount MCP
 app.include_router(ghost_chains_router)
 app.include_router(showdown_router)
 app.mount("/mcp", mcp_app)
 
 
-# --- Existing endpoints remain below ---
+# --- Supporting Endpoints ---
 
 
 class SquareRequest(BaseModel):
@@ -64,6 +95,7 @@ def health() -> dict[str, str]:
 
 @app.post("/event")
 async def event(request: Request) -> dict[str, bool]:
+    """Telemetry receiver for run progress events."""
     try:
         data = await request.json()
         problem = data.get("problem", "unknown")
@@ -76,6 +108,7 @@ async def event(request: Request) -> dict[str, bool]:
 
 @app.post("/callback")
 async def callback(request: Request) -> dict[str, Any]:
+    """Evaluation result JSON receiver."""
     try:
         data = await request.json()
         print(f"[Evaluation Result] {data}")
