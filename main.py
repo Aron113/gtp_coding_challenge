@@ -34,7 +34,6 @@ from tool_box import (
 ENCODING = tiktoken.get_encoding("o200k_base")
 RETRIEVAL_TOKEN_BUDGET = 900
 STUDY_BASE_URL = "https://tool-box-2591eaa24fa3.herokuapp.com"
-INBOX_URL = f"{STUDY_BASE_URL}/emails"
 STUDY_URLS = [
     f"{STUDY_BASE_URL}/study-materials",
     f"{STUDY_BASE_URL}/study-materials/1",
@@ -86,7 +85,7 @@ def _normalize_terms(text: str) -> set[str]:
 
 
 def _fetch_text(url: str, timeout: float = 3.5) -> str:
-    req = UrlRequest(url, headers={"User-Agent": "tool-box-nursery/1.0"})
+    req = UrlRequest(url, headers={"User-Agent": "tool-box-nursery/1.0", "Accept": "*/*"})
     with urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="ignore")
 
@@ -461,31 +460,50 @@ def _extract_meeting_request(question: str) -> dict[str, Any]:
 
 
 def _fetch_schedule(person: str, day: str) -> list[tuple[int, int]]:
-    url = f"{STUDY_BASE_URL}/schedule/{quote_plus(person.strip().lower())}/{quote_plus(day.strip())}"
-    try:
-        payload = _fetch_text(url, timeout=3.0)
-        data = json.loads(payload)
-        busy = data.get("busy", []) if isinstance(data, dict) else []
-        intervals: list[tuple[int, int]] = []
-        for item in busy:
-            if not isinstance(item, list) or len(item) != 2:
-                continue
-            try:
-                start = _hhmm_to_minutes(str(item[0]))
-                end = _hhmm_to_minutes(str(item[1]))
-                if end > start:
-                    intervals.append((start, end))
-            except Exception:
-                continue
-        return intervals
-    except Exception:
-        return []
+    person_clean = quote_plus(person.strip().lower())
+    day_clean = quote_plus(day.strip())
+    urls = [
+        f"{STUDY_BASE_URL}/schedule/{person_clean}/{day_clean}",
+        f"{STUDY_BASE_URL}/schedules/{person_clean}/{day_clean}",
+    ]
+    for url in urls:
+        try:
+            payload = _fetch_text(url, timeout=3.0)
+            data = json.loads(payload)
+            busy = data.get("busy", []) if isinstance(data, dict) else []
+            intervals: list[tuple[int, int]] = []
+            for item in busy:
+                if not isinstance(item, (list, tuple)) or len(item) != 2:
+                    continue
+                try:
+                    start = _hhmm_to_minutes(str(item[0]))
+                    end = _hhmm_to_minutes(str(item[1]))
+                    if end > start:
+                        intervals.append((start, end))
+                except Exception:
+                    continue
+            return intervals
+        except Exception:
+            continue
+    return []
 
 
 def _extract_self_busy(day: str) -> list[tuple[int, int]]:
-    try:
-        text = _fetch_text(INBOX_URL, timeout=3.0)
-    except Exception:
+    inbox_urls = [
+        f"{STUDY_BASE_URL}/inbox",
+        f"{STUDY_BASE_URL}/emails",
+        f"{STUDY_BASE_URL}/messages",
+    ]
+    text = ""
+    for url in inbox_urls:
+        try:
+            text = _fetch_text(url, timeout=3.0)
+            if text and len(text.strip()) > 0:
+                break
+        except Exception:
+            continue
+
+    if not text:
         return []
 
     blocks = [b.strip() for b in re.split(r"\n\s*\n+", text) if b.strip()]
@@ -568,6 +586,7 @@ def _find_earliest_window(question: str) -> dict[str, str]:
 
     merged_busy = _merge_intervals(all_busy)
 
+    # Meetings strictly begin on the hour or the half hour
     current_start = start_bound
     if current_start % 30 != 0:
         current_start += 30 - (current_start % 30)
@@ -598,8 +617,9 @@ mcp_server = FastMCP(
         "for arithmetic, `identify_shape` for what shape a base64 PNG shows, "
         "`count_shapes` for how many shapes a base64 PNG contains, "
         "`retrieve_passages` for study revision chunks, `next_hop` for graph "
-        "routing, and `find_meeting_window` for calendar scheduling. `ask` "
-        "auto-routes from raw question text."
+        "routing, `get_schedule` to fetch friends' busy intervals, `get_inbox` "
+        "to check own accepted meetings, and `find_meeting_window` to compute earliest "
+        "overlapping free slots. `ask` auto-routes from raw question text."
     ),
     stateless_http=True,
     transport_security=TransportSecuritySettings(
@@ -610,13 +630,13 @@ mcp_server = FastMCP(
 
 @mcp_server.tool(structured_output=False)
 def get_name() -> str:
-    """The assistant's name. Answers "What is your name?"."""
+    """The assistant's name. Answers 'What is your name?'."""
     return enforce_token_limit(NAME)
 
 
 @mcp_server.tool(structured_output=False)
 def calculate(expression: str) -> str:
-    """Evaluate arithmetic and return the number, e.g. "2 + 2" -> "4"."""
+    """Evaluate arithmetic and return the number, e.g. '2 + 2' -> '4'."""
     return enforce_token_limit(str(solve_arithmetic(expression)))
 
 
@@ -636,7 +656,7 @@ def count_shapes(image_base64: str) -> str:
 def ask(question: str, image: str | None = None) -> str:
     """Answer any nursery question from its raw text."""
     lower = question.lower()
-    if any(k in lower for k in ["earliest", "window", "all free", "between", "lunch", "24-hour"]):
+    if any(k in lower for k in ["earliest", "window", "all free", "between", "lunch", "24-hour", "free"]):
         return enforce_token_limit(json.dumps(_find_earliest_window(question), ensure_ascii=True))
     if any(k in lower for k in ["map_id", "get from", "from ", " to "]):
         return enforce_token_limit(_next_hop_from_question(question))
@@ -676,6 +696,32 @@ def next_hop(
         visited=visited_set,
     )
     return enforce_token_limit(hop)
+
+
+@mcp_server.tool(structured_output=False)
+def get_schedule(person: str, day: str) -> str:
+    """Fetch the busy intervals for a person on a specific date (YYYY-MM-DD)."""
+    intervals = _fetch_schedule(person, day)
+    busy_list = [[_minutes_to_hhmm(s), _minutes_to_hhmm(e)] for s, e in intervals]
+    return enforce_token_limit(json.dumps({"person": person, "day": day, "busy": busy_list}, ensure_ascii=True))
+
+
+@mcp_server.tool(structured_output=False)
+def get_inbox() -> str:
+    """Fetch own email inbox containing invitation replies."""
+    inbox_urls = [
+        f"{STUDY_BASE_URL}/inbox",
+        f"{STUDY_BASE_URL}/emails",
+        f"{STUDY_BASE_URL}/messages",
+    ]
+    for url in inbox_urls:
+        try:
+            txt = _fetch_text(url, timeout=3.0)
+            if txt:
+                return enforce_token_limit(txt)
+        except Exception:
+            continue
+    return enforce_token_limit("")
 
 
 @mcp_server.tool(structured_output=False)
