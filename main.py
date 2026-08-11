@@ -181,7 +181,7 @@ def identify_shape(image_base64: str) -> str:
         "base64 string."
     )
 )
-def count_shapes(image_base64: str) -> dict:
+def count_shapes(image_base64: str) -> dict[str, int]:
     result = analyze_image(image_base64)
     result.pop("shapes")
     return result

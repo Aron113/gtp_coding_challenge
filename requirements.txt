@@ -1,5 +1,6 @@
 gunicorn
 uvicorn[standard]
+fastapi
 mcp
 starlette
 numpy
