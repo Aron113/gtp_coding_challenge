@@ -1,2 +1,7 @@
 gunicorn
 fastapi[standard]
+mcp
+uvicorn
+starlette
+numpy
+opencv-python-headless
