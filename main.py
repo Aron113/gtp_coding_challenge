@@ -2,11 +2,9 @@ import base64
 import binascii
 import json
 import math
-from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 from fastmcp import FastMCP
 
@@ -14,49 +12,37 @@ from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
 from tool_box import answer_question
 
-# Real MCP server (JSON-RPC over the Streamable HTTP transport), not a bespoke
-# REST shim - the evaluator connects as an actual MCP client and does the
-# initialize/tools-list/tools-call handshake. stateless_http=True so answers
-# don't depend on in-memory session state surviving across requests/workers.
-mcp_server = FastMCP(
-    name="Tool Box Nursery",
-    instructions=(
-        "A nursery-stage assistant. Call `ask` with the question text "
-        "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
-        "'How many shapes are in this image?'). For shape questions, either "
-        "embed the base64-encoded PNG directly in `question` or pass it via "
-        "`image`."
-    ),
-    stateless_http=True,
-    streamable_http_path="/",
+# 1. Initialize FastMCP with name only (no removed kwargs)
+mcp = FastMCP(name="Tool Box Nursery")
+
+
+# 2. Register Nursery Tool
+@mcp.tool(
+    name="answer_question",
+    description="Answers nursery questions regarding name, math, and shapes.",
+)
+def nursery_tool(question: str) -> str:
+    """Answers nursery questions."""
+    return str(answer_question(question))
+
+
+# 3. Create FastMCP ASGI app (path="/" because it will be mounted at /mcp)
+mcp_app = mcp.http_app(path="/")
+
+# 4. Initialize FastAPI with FastMCP lifespan (vital for SSE/Stream transport)
+app = FastAPI(
+    title="Tool Box Nursery",
+    version="1.0.0",
+    lifespan=mcp_app.lifespan,
 )
 
-
-@mcp_server.tool()
-def ask(question: str, image: str | None = None) -> str | int | float:
-    """Answer a nursery question: the bot's name, arithmetic (+, -, *, /),
-    or the shape / shape count in a base64-encoded PNG. Returns the bot's
-    name as a string, an arithmetic result as a number, a shape as one of
-    "rectangle", "triangle", "circle", or a shape count as an integer."""
-    payload: dict[str, Any] = {"question": question}
-    if image:
-        payload["image"] = image
-    return answer_question(payload)
-
-
-mcp_app = mcp_server.streamable_http_app()
-
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    async with AsyncExitStack() as stack:
-        await stack.enter_async_context(mcp_server.session_manager.run())
-        yield
-
-
-app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
+# 5. Include existing routers and mount MCP sub-app
+app.include_router(ghost_chains_router)
 app.include_router(showdown_router)
 app.mount("/mcp", mcp_app)
+
+
+# --- Existing endpoints remain below ---
 
 
 class SquareRequest(BaseModel):
@@ -78,7 +64,6 @@ def health() -> dict[str, str]:
 
 @app.post("/event")
 async def event(request: Request) -> dict[str, bool]:
-    """Telemetry receiver for run progress events."""
     try:
         data = await request.json()
         problem = data.get("problem", "unknown")
@@ -91,7 +76,6 @@ async def event(request: Request) -> dict[str, bool]:
 
 @app.post("/callback")
 async def callback(request: Request) -> dict[str, Any]:
-    """Evaluation result JSON receiver."""
     try:
         data = await request.json()
         print(f"[Evaluation Result] {data}")
