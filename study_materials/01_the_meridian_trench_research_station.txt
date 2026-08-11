@@ -1,0 +1,59 @@
+# The Meridian Trench Research Station
+
+## Overview
+
+The Meridian Trench Research Station is a permanently crewed deep-sea outpost built into the wall of an abyssal rift far from any shipping lane. The main habitat rests at a depth of 6,214 meters below the surface, anchored to a basalt shelf by twelve titanium struts. A smaller storage annex, used for spare parts and preserved samples, sits nearby at a shallower 6,050 meters, tethered to the main hull by a reinforced access tunnel. The station was assembled in sections lowered from a surface barge over the course of several weeks and has operated continuously since its completion.
+
+Dr. Ansel Kovrith has served as station director since the facility's founding, overseeing both the scientific program and the day-to-day operations of the habitat. Kovrith reports to the surface program office on a fixed schedule and holds final authority over any decision to curtail external dive activity. A rotating deputy director assists with logistics but does not hold independent authority over dive suspensions.
+
+The station broadcasts under the radio call sign Umbral Seven on the primary hailing frequency reserved for the trench program. A secondary, rarely used backup channel answers to the call sign Umbral Two, reserved strictly for emergency traffic when the primary transmitter is offline. Surface vessels transiting the area are briefed to expect only the primary designation during routine contact windows.
+
+## Staffing Roster
+
+Crew levels at the station are tracked closely by the deputy director's office. The station maintains a resident population of forty-one scientists and technicians, spread across three rotating shifts so the habitat is never left unstaffed. During changeover periods, when incoming and outgoing crews briefly overlap before the outgoing group departs on the surface barge, occupancy can spike to forty-six individuals for no more than a single day. Historical logs show that occupancy has never exceeded fifty-two, the theoretical safety ceiling set by the life-support engineers during initial commissioning.
+
+Staff are organized into four working groups: the Biology working group, the Geology working group, the Systems Engineering working group, and the Life Support working group. Each working group elects its own shift lead, who reports to the deputy director rather than directly to Kovrith, keeping the director's attention focused on program-level decisions.
+
+New arrivals undergo a mandatory pressure acclimation period before beginning any duties. Veteran staff mentor incoming crew through their first rotation, and mentorship pairings are logged in the station's onboarding ledger for reference during later performance reviews. Meals are prepared on a communal rotation basis, with every working group taking a turn staffing the galley for one week out of every cycle.
+
+## Equipment Maintenance Logs
+
+The submersible fleet is the responsibility of the Systems Engineering working group. The station's primary submersible is named the Halcyon Drift, a twin-hulled craft used for extended excursions beyond the range of the tethered dive cages. A second, older craft kept in reserve for emergencies is informally called the Halberd Drift by the crew, though it has not been deployed on an active mission in several seasons and is maintained purely as a contingency vehicle. Confusing the two names in a mission log is considered a minor but recurring paperwork error among newer technicians.
+
+Routine maintenance on the primary craft includes a full hull inspection, a review of ballast tank integrity, and a check of the manipulator arm's hydraulic seals. Maintenance technicians log every inspection in a bound ledger kept in the equipment bay rather than in the digital system, a holdover practice from the station's earliest years that persists despite repeated proposals to digitize it.
+
+Spare parts for the submersible fleet are stored in the annex rather than the main habitat, both to conserve space and to keep flammable lubricants away from the crew's living quarters. Technicians retrieve parts via the access tunnel, logging each withdrawal against the annex inventory sheet so that resupply requests can be planned around actual consumption rather than guesswork.
+
+## Incident Reports
+
+Two unrelated incidents were logged in close succession this past autumn. An oxygen scrubber failure occurred on 2 November, prompting an emergency ventilation drill that cleared the affected module within eleven minutes. Investigators later traced the failure to a corroded valve seat rather than any fault in the scrubber's filtration media, and the valve design was subsequently flagged for review across the rest of the habitat's air-handling systems.
+
+A separate, unrelated incident on 9 November involved a minor flooding event in the storage annex after a gasket failure during a routine pressure test; no injuries resulted, and the annex was resealed within a single shift. Crew sometimes conflate the two November incidents in casual conversation, though the maintenance logs treat them as entirely distinct events with separate root-cause findings.
+
+Any incident that results in a habitat-wide alert must be documented in a formal report within forty-eight hours, reviewed by the deputy director, and forwarded to the surface program office before the following resupply cycle. Reports that miss this window are flagged for a compliance review during the director's next quarterly assessment.
+
+## Supply Schedule
+
+Logistics for the station revolve entirely around the resupply cycle. The resupply vessel docks at the station once every 19 days, carrying fresh provisions, replacement parts, and outgoing sample shipments bound for surface laboratories. A secondary, unscheduled resupply run can be requested in an emergency, but crew are trained to treat this as an exceptional measure reserved for genuine shortages rather than routine restocking.
+
+Provisions are calculated against the resident population plus a fixed safety margin, so that a single missed resupply cycle does not force immediate rationing. Perishable goods are prioritized for early distribution to the galley, while non-perishable stock is rotated into the annex according to a strict first-in, first-out policy tracked by the inventory sheet.
+
+Outgoing sample shipments are packed in insulated containers rated for the pressure differential encountered during ascent, and each container is sealed and logged by a Systems Engineering technician before being loaded onto the resupply vessel for its return trip to the surface.
+
+## Calibration Procedures
+
+Acoustic calibration work is scheduled well in advance and logged by array. The Kesterline array was recalibrated on 14 March, restoring full sensitivity to the outer hydrophone ring after several weeks of gradually degrading signal quality. The array's inner ring, sometimes confused with the outer ring in casual shorthand, was not part of this recalibration and remains on its normal annual schedule. A separate acoustic sub-array, the Halberd sub-array, underwent unrelated routine maintenance on 12 March, two days before the Kesterline work began, and crew logs from that week occasionally mix up the two dates.
+
+During array calibration, technicians torque the hydrophone housing's gasket to 12 newton-meters exactly, balancing a reliable seal against the risk of cracking the housing. Technicians use a calibrated torque wrench dedicated solely to this task, stored in a labeled case in the equipment bay, and log the applied torque value in the maintenance ledger alongside the technician's initials.
+
+Any deviation of more than half a newton-meter from the specified torque triggers a mandatory re-seat of the gasket before the array can be returned to service. Over-torquing is treated as more serious than under-torquing, since the housing material is more prone to hairline cracking than to a slow leak.
+
+## Dive Protocols
+
+Excursion limits are set jointly by the life-support and medical staff. Divers are restricted to a maximum excursion time of 47 minutes per dive, a limit set after reviewing prior seasons of physiological data. A separate, more conservative limit of 35 minutes applies to any diver still within their first month of active rotation, regardless of experience gained at other facilities.
+
+Every dive requires a minimum of two divers and one surface-side monitor tracking both divers' vital signs and remaining air supply throughout the excursion. A dive is aborted immediately if either diver's oxygen reserve drops below a preset threshold, regardless of how close the pair is to completing their assigned task.
+
+Post-dive debriefs are logged alongside the maintenance ledger entries for that day, cross-referencing any equipment used during the excursion so that wear patterns can be tracked over time. Divers who exceed their allotted excursion time by even a few minutes are required to undergo a supplementary medical check before their next scheduled dive, a rule enforced without exception regardless of rank or seniority.
+
+The station's dive schedule is planned a full cycle in advance and posted in the equipment bay, giving every working group visibility into upcoming excursions so that maintenance and staffing needs can be coordinated well ahead of time.

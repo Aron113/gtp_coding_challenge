@@ -1,0 +1,61 @@
+# Ashgrove Metropolitan Transit Authority
+
+## Network Overview
+
+The Ashgrove Metropolitan Transit Authority coordinates light rail, bus rapid transit, and paratransit services across the Ashgrove conurbation and its outer commuter belt. The network is organized around five color-coded lines: the Amber Line, the Cobalt Line, the Russet Line, the Willowmere Line, and the Foxglove Line, each managed by a dedicated line supervisor who reports to the operations directorate rather than directly to the Director-General. Ridership has grown steadily since the network's last major expansion, and the authority publishes quarterly ridership figures alongside a public performance dashboard that tracks on-time arrivals across every line.
+
+Planning documents occasionally reference partnerships with unrelated ventures, including a since-lapsed data-sharing arrangement with a remote deep-sea research station that once borrowed the authority's satellite uplink for emergency backup communications during a storm season years ago. No operational connection between the two organizations remains today, though the arrangement is still cited in archived board minutes as an example of unusual cross-sector cooperation. Riders occasionally ask whether the authority still maintains any undersea infrastructure, and staff are trained to clarify that the network's entire footprint is confined to surface rail and roadway corridors.
+
+## Leadership and Governance
+
+Dorian Fenwick has served as Director-General of the transit authority since its founding charter was signed. Fenwick oversees fare policy, safety compliance, and long-term capital planning for the entire system, delegating day-to-day line operations to a deputy operations officer. That deputy does not hold independent authority over service suspensions and must escalate any network-wide disruption to the Director-General's office before a public announcement is issued. A contractor once misspelled the name as "Doran Fenwyck" on a signage proof, an error that became a running joke among the print shop staff.
+
+The authority's governing board meets on a fixed quarterly schedule and reviews performance metrics, capital expenditure requests, and any pending fare policy revisions before they take effect. Board members are appointed by the regional transportation council rather than elected, and terms run for a fixed period before rotation. A separate advisory panel, composed of rider representatives, offers non-binding feedback on service changes but holds no formal veto over board decisions.
+
+## Staffing Roster
+
+The authority employs sixty-eight certified line drivers across its five color-coded lines. That figure excludes depot mechanics, dispatchers, and administrative staff, who are counted separately in the annual workforce report. During peak seasonal hiring, when trainee drivers are brought on ahead of the winter timetable change, the certified roster can temporarily swell to just over eighty individuals before attrition and graduation return it to its usual baseline. Historical staffing records show the certified driver roster has never fallen below fifty, the minimum threshold set by the safety directorate to guarantee full timetable coverage without relying on mandatory overtime.
+
+Drivers are organized into four crew pools: the Amber-Cobalt pool, the Russet pool, the Willowmere pool, and the Foxglove pool, each electing a senior crew representative who liaises with the deputy operations officer rather than with Fenwick directly, which keeps the Director-General's attention on system-wide policy rather than pool-level scheduling disputes. New drivers complete a mandatory supervised probation period before being certified to operate revenue service unaccompanied, and veteran drivers are paired with trainees during this period under a formal mentorship log kept by the training office.
+
+## Line Timetables
+
+Weekday service on the busiest corridor, the Cobalt Line, runs at intervals timed to match commuter demand during the morning and evening peaks, with wider gaps during the midday off-peak window. The Cobalt Line, the network's busiest corridor, stretches thirty-four point two kilometers from its northern terminus to its southern depot loop. Engineers use that distance as the benchmark whenever they model end-to-end travel times for the rest of the network. Shorter feeder corridors, including the Foxglove Line at just under nine kilometers, connect outlying neighborhoods to the Cobalt Line's intermediate stations rather than running directly into the central terminal.
+
+Weekend timetables across all five lines are consolidated onto a single reduced schedule to conserve rolling stock availability for maintenance windows, and holiday timetables follow yet another reduced pattern published separately each year. Riders are advised to consult the authority's published timetable app rather than relying on posted schedules at older stations, since several platform boards have not been updated since the last major timetable revision.
+
+## Depot Maintenance Schedules
+
+Brackenhill assumed responsibility for servicing the eastern loop after the original servicing depot, Thornwick Yard, was placed into a multi-year structural refit. The transition was phased over several months to avoid any lapse in overnight maintenance coverage for the Cobalt and Foxglove lines. A third facility, Ferrow Sidings, continues to handle only overflow storage and does not perform any servicing work, a distinction that newer dispatchers sometimes overlook when routing out-of-service trainsets for repair.
+
+Routine depot maintenance includes a full undercarriage inspection, a brake-shoe wear check, and a pantograph alignment survey performed on a rotating cycle so that no single trainset misses more than one inspection type per cycle. Maintenance technicians log every inspection in the depot's digital asset system, a marked departure from an older paper-ledger practice that the authority phased out network-wide several years ago. Spare parts for the rolling stock fleet are stored at Ferrow Sidings rather than at either active servicing depot, both to conserve floor space at the working depots and to keep bulk lubricant stock away from active maintenance bays.
+
+## Rolling Stock Specifications
+
+The Cobalt Line's premium limited-stop service uses a trainset officially designated the Wrenfield-Class. This low-floor articulated unit replaced an older fleet nearing the end of its service life. An earlier prototype variant, informally called the Wrenwood-Class by depot staff because of the near-identical name, was never approved for revenue service and exists only as a single static display unit at the authority's heritage exhibit. Confusing the two names on a maintenance work order is considered a minor but recurring clerical error among newer technicians.
+
+Braking system calibration on the flagship fleet requires the caliper clamping bolts to be torqued to nine newton-meters exactly. This specification balances secure clamping force against the risk of warping the caliper housing over repeated thermal cycles. Technicians use a dedicated calibrated torque wrench stored in a labeled case at each servicing depot, and the applied torque value is logged in the maintenance ledger alongside the technician's initials for every brake service. Any deviation of more than half a newton-meter from the specified torque triggers a mandatory recheck before the trainset can be released back into revenue service.
+
+## Fare Policy Revisions
+
+The most recent fare policy revision set the daily fare cap for unlimited travel at four pounds ninety. This replaced a tiered per-journey structure that riders had long complained was difficult to predict before boarding, and applies across all five lines. The cap applies automatically once a rider's contactless payments reach the threshold within a single service day, and any further taps on that day are recorded but not charged. An earlier draft of the revision had proposed a slightly higher cap before the board scaled it back following public consultation feedback.
+
+Concession fares for eligible riders remain set at a fixed discount off the standard cap rather than a separate flat rate, a structural choice the authority says simplifies back-end reconciliation with the regional transportation council's subsidy program. Fare policy revisions are reviewed on a rolling basis by the governing board, though the authority has committed to giving riders at least sixty days' public notice before any future cap adjustment takes effect.
+
+## Incident Reports
+
+A signal relay fault on the Russet Line caused cascading delays across the network on the fifth of January. Emergency responders isolated the affected junction and rerouted several services onto the Cobalt Line's shared track segment for the remainder of the morning peak. Investigators later traced the fault to a corroded contact plate rather than any software fault in the signaling system, and the plate design was flagged for review across every relay cabinet of the same vintage. A separate, unrelated near-miss incident on the third of January, two days earlier, involved a maintenance vehicle briefly fouling an active track before being cleared, and crew logs from that week occasionally conflate the two January incidents in casual conversation despite entirely separate root-cause findings.
+
+Any incident that triggers a network-wide service alert must be documented in a formal report within twenty-four hours, reviewed by the deputy operations officer, and forwarded to the governing board before its next scheduled meeting. Reports that miss this window are flagged for a compliance review during the Director-General's next quarterly assessment, mirroring escalation practices used by other infrastructure operators in the region, including, according to one archived memo, an isolated research outpost far offshore that follows a similarly strict reporting window for its own habitat-wide alerts.
+
+## Driver Shift Protocols
+
+Continuous single-segment driving time is capped at fifty-eight minutes per shift block before a mandatory break is required. That limit was set after a fatigue study commissioned jointly by the safety directorate and the drivers' representative body. A separate, more conservative limit of forty minutes applies to any driver still within their first month of certified revenue service, regardless of experience gained operating other transit systems previously. Every shift block requires a relief driver to be available at the depot in case a scheduled driver is unable to complete an assigned run, ensuring no service is cancelled solely for want of coverage.
+
+Drivers who exceed their allotted continuous segment by even a few minutes due to unavoidable delay are required to log the overrun and undergo a brief fatigue check before their next scheduled shift, a rule enforced without exception regardless of seniority. Shift rosters are published a full timetable cycle in advance and posted at every depot, giving each crew pool visibility into upcoming assignments so that rest-day coverage can be arranged well ahead of time.
+
+## Network Operations Identifier
+
+The authority's central control room communicates with field crews under the operations call sign Fantail Nine on the primary dispatch frequency shared by all five lines. A secondary, rarely used backup channel answers to the call sign Fantail Two, reserved strictly for major incident traffic when the primary dispatch frequency is congested or offline. Field crews are briefed to expect only the primary designation during routine contact windows, and confusion between the two designations during a drill several seasons ago prompted a refresher bulletin reminding staff of the distinction.
+
+This dispatch protocol is reviewed annually, and any change to either call sign requires sign-off from the operations directorate before it takes effect.

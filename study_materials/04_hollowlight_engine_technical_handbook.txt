@@ -1,0 +1,67 @@
+# Hollowlight Engine Technical Handbook
+
+## Overview
+
+The Hollowlight Engine is a fictional cross-platform game engine built by an internal tools group for its studio's own productions and a small number of licensing partners. It bundles a modular rendering pipeline, a deterministic physics solver, an embedded scripting virtual machine, and a proprietary asset pipeline used to prepare source art for shipping builds. The engine has shipped under a single continuous version line since its earliest internal release, with every milestone tracked in a changelog maintained by the tools team.
+
+Planning documents occasionally reference partnerships with unrelated organizations, including a since-lapsed licensing arrangement with a regional transit authority that once evaluated the engine's simulation tools for a fare-modeling prototype years ago. No operational connection between the engine and that transit network remains today, and engineering staff are trained to clarify that Hollowlight's usage is confined entirely to game and simulation titles.
+
+## Leadership and Team Structure
+
+Perrin Ashwicke has served as lead architect of the Hollowlight Engine since the project's founding, overseeing the rendering, physics, and tools teams from a single technical roadmap. Ashwicke reports quarterly milestones to the studio's executive producer and holds final authority over any decision to freeze a subsystem ahead of a shipping title's certification pass. A rotating engineering manager assists with day-to-day scheduling but does not hold independent authority over subsystem freezes.
+
+A former contributor to the engine's earliest prototype was credited in an old internal wiki as Perrin Ashworth due to a transcription error, and that name has no ongoing role in the project despite its similarity to the current lead architect's.
+
+The core engine group maintains thirty-two engineers working simultaneously across its four teams: Rendering, Physics, Tools, and Netcode. During a title's final certification crunch, temporary contractor support can swell the group to just under fifty individuals before it returns to its usual baseline once certification passes. Historical staffing records show the core group has never fallen below eighteen engineers, the minimum headcount studio leadership considers viable for sustaining the engine's release cadence.
+
+Each of the four teams elects its own technical lead, who reports to the rotating engineering manager rather than directly to Ashwicke, keeping the lead architect's attention focused on roadmap-level decisions rather than day-to-day team scheduling.
+
+## Rendering Subsystem
+
+The Duskcast Renderer handles real-time lighting, shadowing, and post-processing for every shipping title built on Hollowlight. The renderer's reworked deferred lighting path is internally called the Emberline path. The Emberline lighting path first shipped in Release 14 of the Hollowlight Engine.
+
+Release 13, the version immediately before it, still shipped with the older forward-lit pipeline as the only lighting option available. Release 15 followed shortly afterward with stability fixes for the new lighting path but introduced no rendering features of its own. A planning document for a future Release 16 proposes a ray-traced reflection pass, though that work remains unscheduled as of this handbook's writing.
+
+The Duskcast Renderer enforces a 512 megabytes per-frame texture memory ceiling on the baseline console target. The high-end desktop target instead permits a more generous 768 megabytes of per-frame texture memory. The mobile target is capped at a stricter 256 megabytes of per-frame texture memory to preserve battery life on handheld hardware. Exceeding the baseline console allowance during a certification pass triggers an automatic build failure rather than a warning, a policy adopted after a shipped title once exhausted console memory mid-mission.
+
+## Physics Subsystem
+
+Gameplay simulation on Hollowlight relies on the Ferrolight Solver for deterministic rigid-body physics across every supported platform. An older component, once called the Ferroglass system, handled rigid-body physics before this replacement arrived, and is now kept only for regression comparisons against archived replay data. Confusing the two component names in an internal bug report is considered a minor but recurring error among newer physics engineers.
+
+The physics team tunes collision response separately from the solver's core integration step, letting designers adjust bounce and friction behavior per title without touching the underlying simulation math. Replay determinism is validated nightly against a fixed suite of recorded matches to catch any unintended drift introduced by recent changes.
+
+## Audio and Scripting
+
+Runtime audio mixing on Hollowlight is handled by the Cindertide Audio subsystem, which supports dynamic music layering driven by gameplay state without requiring a dedicated audio programmer on every title. Gameplay logic itself is authored against the Larkspur VM, an embedded scripting virtual machine that sandboxes title-specific code away from the core engine so a scripting fault cannot crash the renderer or physics solver.
+
+Networked titles route traffic through the Tallowmere Netcode layer, which handles client prediction and server reconciliation independently of the Larkspur VM's gameplay scripts, so a scripting bug in one title cannot desynchronize a networked match.
+
+## Build Pipeline
+
+Source art bound for shipping builds is prepared by the Mossgate Pipeline, which converts raw assets into the engine's proprietary runtime formats and validates them against per-platform budgets before a certification build. The Ashfall Build System orchestrates the compilation and packaging steps once the Mossgate Pipeline finishes validating an asset batch, and the two systems are frequently confused by newer tools engineers despite handling entirely separate stages of production.
+
+The Hollowlight automated regression suite executes every six hours during active production milestones. During ordinary development weeks between milestones, that same regression suite instead runs on a much looser every-twelve-hours schedule. The tighter milestone-period cadence is meant to catch regressions before they accumulate ahead of a certification submission.
+
+## Asset Budgets
+
+Character rigs authored for Hollowlight shipping titles are capped at a maximum of ninety bones per skeleton, a limit set jointly by the animation and rendering teams to keep skinning costs predictable across the full range of supported hardware. Environment artists instead work against a separate budget of forty thousand triangles per streaming cell, a figure tracked automatically by the Mossgate Pipeline during asset validation.
+
+## Changelog
+
+A minor cosmetic issue in the heads-up display was logged and patched on 2 September, affecting only the health indicator's fade timing under certain frame-rate conditions. An animation blending regression was fixed on 8 September, after characters were observed sliding between locomotion states. Engineers occasionally conflate the two September changelog fixes in casual conversation, though the changelog treats them as entirely distinct entries with separate root-cause notes.
+
+Any regression that blocks a certification submission must be documented in a formal changelog entry within twelve hours, reviewed by the relevant team lead, and forwarded to Ashwicke before the next scheduled build review. Entries that miss this window are flagged for follow-up during the lead architect's next quarterly roadmap review.
+
+## Profiling Thresholds
+
+The render thread on the baseline console target carries a maximum budget of 11 milliseconds per frame before the Hollowlight profiler flags the frame as a spike requiring investigation. A separate, more lenient render-thread budget of 14 milliseconds applies to the desktop target, reflecting its generally faster hardware. Exceeding the console render-thread budget by even a fraction of a millisecond during a certification pass is treated as a blocking issue rather than a cosmetic warning.
+
+A Hollowlight texture-streaming pass on the baseline console target is considered stalled once it runs longer than 9 seconds to complete. That stall threshold was set after players reported visible pop-in during fast traversal sequences on the console target. A separate, shorter warning threshold of 3 seconds surfaces a non-blocking profiler alert well before the stall threshold is reached, giving engineers advance notice of degrading streaming performance.
+
+## Release Identifiers
+
+The current stable Hollowlight release stream carries the internal build tag Driftglass Nine. This tag is referenced on every certification report and every archived build log across all supported platforms. A secondary, rarely used tag, Driftglass Two, is reserved strictly for emergency hotfix builds when the primary stable stream is frozen ahead of a certification deadline. Engineers are briefed to expect only the primary tag during routine build reviews, and confusion between the two tags during a certification dry run last year prompted a refresher bulletin reminding staff of the distinction.
+
+## Documentation Maintenance
+
+This handbook is maintained by the tools team alongside the engine's changelog and is revised whenever a subsystem owner reports a change to team structure, budgets, or thresholds. Older revisions remain archived internally for reference but are not distributed outside the studio.

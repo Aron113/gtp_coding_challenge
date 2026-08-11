@@ -20,6 +20,16 @@ import tiktoken
 
 from ghost_chains import router as ghost_chains_router
 from kan_chiong_delivery import solve as kan_chiong_solve
+from nursery_revision import budget_used as revision_budget_used
+from nursery_revision import find_passages as revision_find_passages
+from nursery_routing import (
+    cache_graph,
+    fetch_graph,
+    normalise_graph,
+    parse_question as parse_route_question,
+    resolve_label,
+)
+from nursery_routing import next_hop as routing_next_hop
 from showdown.router import router as showdown_router
 from tool_box import (
     NAME,
@@ -676,9 +686,18 @@ def ask(question: str, image: str | None = None) -> str:
 
 @mcp_server.tool(structured_output=False)
 def retrieve_passages(question: str) -> str:
-    """Return relevant study passages for a revision question as a JSON array of strings."""
-    passages = _retrieve_passages(question, RETRIEVAL_TOKEN_BUDGET)
-    return enforce_token_limit(json.dumps(passages, ensure_ascii=True))
+    """Return relevant study passages for a revision question as a JSON array
+    of strings, with a strict total budget <= 900 tokens using o200k_base."""
+    passages = revision_find_passages(question)
+
+    # The response must parse as JSON, and a question voided by malformed
+    # output is voided permanently - so never truncate the serialised array.
+    # Shed whole passages instead until it fits the global 1,500-token ceiling.
+    payload = json.dumps(passages, ensure_ascii=True)
+    while passages and len(ENCODING.encode(payload)) > 1500:
+        passages.pop()
+        payload = json.dumps(passages, ensure_ascii=True)
+    return payload
 
 
 @mcp_server.tool(structured_output=False)
@@ -689,16 +708,32 @@ def next_hop(
     map_id: str | None = None,
     hops_left: int | None = None,
     visited: list[str] | None = None,
+    adjacency: dict[str, dict[str, float]] | None = None,
+    tolls: dict[str, float] | None = None,
 ) -> str:
-    """Return the next adjacent node toward the destination for the map."""
-    visited_set = {v.upper() for v in (visited or [])}
-    hop = _next_hop_from_question(
-        question=question,
-        current=current,
-        destination=destination,
-        map_id=map_id,
-        hops_left=hops_left,
-        visited=visited_set,
+    """Return the next adjacent node toward the destination for the map in
+    question/map_id. Cost is edge weights plus destination-node entry tolls.
+    If hops_left is provided, returns the best constrained next step."""
+    parsed = parse_route_question(question or "")
+    source = current or parsed.get("source") or ""
+    target = destination or parsed.get("destination") or ""
+    chosen_map = map_id or parsed.get("map_id") or ""
+    limit = hops_left if hops_left is not None else parsed.get("hops_left")
+
+    # Prefer a map handed to us directly; otherwise read it by id.
+    if adjacency:
+        graph, node_tolls = normalise_graph({"adjacency": adjacency, "tolls": tolls or {}})
+        cache_graph(chosen_map, graph, node_tolls)
+    else:
+        graph, node_tolls = fetch_graph(chosen_map)
+
+    hop = routing_next_hop(
+        graph,
+        node_tolls,
+        source,
+        target,
+        hops_left=limit,
+        visited=[resolve_label(graph, v) for v in (visited or [])],
     )
     return enforce_token_limit(hop)
 
@@ -760,10 +795,30 @@ def health() -> dict[str, str]:
 
 @app.post("/event")
 async def event(request: Request) -> dict[str, bool]:
-    """Telemetry receiver for run progress events."""
+    """Telemetry receiver for run progress events.
+
+    This is the only place refusals, void reasons and the exact token total
+    the grader measured are reported - the result callback carries just a
+    score and a one-line summary - so the whole payload is logged rather than
+    a couple of fields. It is one-way telemetry and cannot affect scoring, so
+    nothing here is allowed to raise.
+    """
     try:
         data = await request.json()
-        print(f"[Telemetry Event] {json.dumps(data)}")
+        problem = data.get("problem", "unknown")
+        attempt = data.get("attempt", 1)
+        headline = f"[Telemetry] problem={problem} attempt={attempt}"
+
+        # Surface the fields worth seeing at a glance, when they are present.
+        for key in (
+            "tokens", "token_total", "measured_tokens", "budget",
+            "accepted", "rejected", "voided", "void_reason", "reason",
+            "error", "status", "chunks", "passages", "hops_left", "node",
+        ):
+            if key in data:
+                headline += f" {key}={data[key]!r}"
+        print(headline, flush=True)
+        print(f"[Telemetry raw] {json.dumps(data, default=str)[:2000]}", flush=True)
     except Exception:
         pass
     return {"ok": True}
