@@ -8,10 +8,12 @@ import math
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from ghost_chains import router as ghost_chains_router
 from tool_box import answer_question
 
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0")
+app.include_router(ghost_chains_router)
 
 class SquareRequest(BaseModel):
     number: int | float
