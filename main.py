@@ -8,7 +8,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from functools import lru_cache
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
@@ -43,35 +43,9 @@ STUDY_URLS = [
     f"{STUDY_BASE_URL}/study-materials/5",
 ]
 STOP_WORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "for",
-    "from",
-    "how",
-    "i",
-    "in",
-    "is",
-    "it",
-    "of",
-    "on",
-    "or",
-    "that",
-    "the",
-    "this",
-    "to",
-    "was",
-    "what",
-    "when",
-    "where",
-    "who",
-    "why",
-    "with",
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
+    "how", "i", "in", "is", "it", "of", "on", "or", "that", "the",
+    "this", "to", "was", "what", "when", "where", "who", "why", "with",
 }
 
 
@@ -401,7 +375,7 @@ def _next_hop_from_question(
 
 
 # ---------------------------------------------------------
-# Stage 3: Calendar & Scheduling Helpers
+# Stage 3: Robust Calendar & Inbox Parser
 # ---------------------------------------------------------
 
 def _hhmm_to_minutes(value: str) -> int:
@@ -436,19 +410,30 @@ def _extract_meeting_request(question: str) -> dict[str, Any]:
         end_bound = f"0{end_bound}"
 
     people: list[str] = []
+    # Pattern to capture "you and ada, bram", "you, ada and bram", "ada, bram and you", etc.
     people_match = re.search(
-        r"(?:when\s+)?you\s+and\s+([^,]+(?:,[^,]+)*?)(?:\s+are\s+all\s+free|\s+can\s+meet|\s+for\b|[.?])",
+        r"(?:when|if)\s+(.*?)\s+(?:are\s+all\s+free|are\s+free|can\s+meet|have\s+time)",
         question,
         flags=re.IGNORECASE,
     )
     if people_match:
-        raw_names = people_match.group(1)
-        raw_names = re.sub(r"\band\b", ",", raw_names, flags=re.IGNORECASE)
-        tokens = [p.strip().strip(".,;:").lower() for p in raw_names.split(",") if p.strip()]
-        for t in tokens:
-            cleaned = re.sub(r"[^a-z0-9_\-]", "", t)
-            if cleaned and cleaned != "you" and cleaned not in people:
-                people.append(cleaned)
+        names_part = people_match.group(1)
+    else:
+        # Fallback search
+        names_part = question
+
+    # Find candidate names
+    raw_tokens = re.findall(r"[A-Za-z0-9_\-]+", names_part)
+    skip_words = {
+        "find", "the", "earliest", "window", "on", "between", "and",
+        "for", "lunch", "times", "are", "hh", "mm", "24", "hour",
+        "minute", "minutes", "you", "all", "free", "when", "can", "meet", "meeting"
+    }
+    for token in raw_tokens:
+        clean = token.lower()
+        if clean not in skip_words and len(clean) >= 2 and not clean.isdigit() and not re.match(r"^\d{4}-\d{2}-\d{2}$", clean):
+            if clean not in people:
+                people.append(clean)
 
     return {
         "day": day,
@@ -460,8 +445,8 @@ def _extract_meeting_request(question: str) -> dict[str, Any]:
 
 
 def _fetch_schedule(person: str, day: str) -> list[tuple[int, int]]:
-    person_clean = quote_plus(person.strip().lower())
-    day_clean = quote_plus(day.strip())
+    person_clean = quote(person.strip().lower())
+    day_clean = quote(day.strip())
     urls = [
         f"{STUDY_BASE_URL}/schedule/{person_clean}/{day_clean}",
         f"{STUDY_BASE_URL}/schedules/{person_clean}/{day_clean}",
@@ -488,31 +473,41 @@ def _fetch_schedule(person: str, day: str) -> list[tuple[int, int]]:
     return []
 
 
-def _extract_self_busy(day: str) -> list[tuple[int, int]]:
+def _fetch_inbox_text() -> str:
     inbox_urls = [
         f"{STUDY_BASE_URL}/inbox",
         f"{STUDY_BASE_URL}/emails",
         f"{STUDY_BASE_URL}/messages",
+        f"{STUDY_BASE_URL}/mail",
     ]
-    text = ""
     for url in inbox_urls:
         try:
-            text = _fetch_text(url, timeout=3.0)
-            if text and len(text.strip()) > 0:
-                break
+            txt = _fetch_text(url, timeout=3.0)
+            if txt and ("From:" in txt or "Subject:" in txt or "Response:" in txt):
+                return txt
         except Exception:
             continue
+    return ""
 
+
+def _extract_self_busy(day: str) -> list[tuple[int, int]]:
+    text = _fetch_inbox_text()
     if not text:
         return []
 
-    blocks = [b.strip() for b in re.split(r"\n\s*\n+", text) if b.strip()]
+    # Split into individual email messages by "From:" or blank lines
+    raw_blocks = re.split(r"(?=(?:\n|^)\s*From:)", text, flags=re.IGNORECASE)
     intervals: list[tuple[int, int]] = []
 
-    for block in blocks:
-        if not re.search(r"Response:\s*ACCEPTED\b", block, flags=re.IGNORECASE):
+    for block in raw_blocks:
+        if not block.strip():
+            continue
+        # Check if this invitation was ACCEPTED
+        resp_match = re.search(r"Response:\s*([A-Za-z]+)", block, flags=re.IGNORECASE)
+        if not resp_match or resp_match.group(1).upper() != "ACCEPTED":
             continue
 
+        # Extract When: 2026-09-08 10:30-11:45
         when_match = re.search(
             r"When:\s*(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})",
             block,
@@ -521,7 +516,10 @@ def _extract_self_busy(day: str) -> list[tuple[int, int]]:
         if not when_match:
             continue
 
-        msg_day, start_str, end_str = when_match.group(1), when_match.group(2), when_match.group(3)
+        msg_day = when_match.group(1)
+        start_str = when_match.group(2)
+        end_str = when_match.group(3)
+
         if msg_day != day:
             continue
 
@@ -552,6 +550,7 @@ def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
 
 def _is_slot_free(start: int, end: int, merged_busy: list[tuple[int, int]]) -> bool:
     for busy_start, busy_end in merged_busy:
+        # Overlap occurs if slot starts before busy ends AND slot ends after busy starts
         if start < busy_end and end > busy_start:
             return False
     return True
@@ -586,7 +585,7 @@ def _find_earliest_window(question: str) -> dict[str, str]:
 
     merged_busy = _merge_intervals(all_busy)
 
-    # Meetings strictly begin on the hour or the half hour
+    # Meetings begin strictly on the hour or half hour (:00 or :30)
     current_start = start_bound
     if current_start % 30 != 0:
         current_start += 30 - (current_start % 30)
@@ -606,6 +605,13 @@ def _find_earliest_window(question: str) -> dict[str, str]:
     }
 
 
+def _format_meeting_answer(window: dict[str, str]) -> str:
+    """Format meeting answer clearly for agents asking via text."""
+    start = window.get("start", "08:00")
+    end = window.get("end", "09:00")
+    return f"{start} to {end}"
+
+
 # ---------------------------------------------------------
 # FastMCP Server Setup
 # ---------------------------------------------------------
@@ -613,13 +619,10 @@ def _find_earliest_window(question: str) -> dict[str, str]:
 mcp_server = FastMCP(
     name="Tool Box Nursery",
     instructions=(
-        "A multi-stage assistant. Use `get_name` for its name, `calculate` "
-        "for arithmetic, `identify_shape` for what shape a base64 PNG shows, "
-        "`count_shapes` for how many shapes a base64 PNG contains, "
-        "`retrieve_passages` for study revision chunks, `next_hop` for graph "
-        "routing, `get_schedule` to fetch friends' busy intervals, `get_inbox` "
-        "to check own accepted meetings, and `find_meeting_window` to compute earliest "
-        "overlapping free slots. `ask` auto-routes from raw question text."
+        "You are an assistant with access to tools for calendar scheduling, graph navigation, "
+        "and study retrieval. When asked to find a meeting or lunch window when people are free, "
+        "use `find_meeting_window` to compute the exact start and end times, or use `get_schedule` "
+        "and `get_inbox` to inspect free/busy times. Start times are always on the hour or half-hour."
     ),
     stateless_http=True,
     transport_security=TransportSecuritySettings(
@@ -654,10 +657,12 @@ def count_shapes(image_base64: str) -> str:
 
 @mcp_server.tool(structured_output=False)
 def ask(question: str, image: str | None = None) -> str:
-    """Answer any nursery question from its raw text."""
+    """Answer any nursery question directly."""
     lower = question.lower()
     if any(k in lower for k in ["earliest", "window", "all free", "between", "lunch", "24-hour", "free"]):
-        return enforce_token_limit(json.dumps(_find_earliest_window(question), ensure_ascii=True))
+        window = _find_earliest_window(question)
+        # Return format: "09:00 to 10:00" or JSON
+        return enforce_token_limit(json.dumps(window, ensure_ascii=True))
     if any(k in lower for k in ["map_id", "get from", "from ", " to "]):
         return enforce_token_limit(_next_hop_from_question(question))
     if any(k in lower for k in ["study", "material", "revise", "exam", "when was", "where was", "who was"]):
@@ -700,34 +705,23 @@ def next_hop(
 
 @mcp_server.tool(structured_output=False)
 def get_schedule(person: str, day: str) -> str:
-    """Fetch the busy intervals for a person on a specific date (YYYY-MM-DD)."""
+    """Fetch the busy intervals for a person on a specific date (YYYY-MM-DD). Format: {"person":"ada","day":"2026-09-08","busy":[["08:00","11:30"]]}."""
     intervals = _fetch_schedule(person, day)
     busy_list = [[_minutes_to_hhmm(s), _minutes_to_hhmm(e)] for s, e in intervals]
-    return enforce_token_limit(json.dumps({"person": person, "day": day, "busy": busy_list}, ensure_ascii=True))
+    return enforce_token_limit(json.dumps({"person": person.lower(), "day": day, "busy": busy_list}, ensure_ascii=True))
 
 
 @mcp_server.tool(structured_output=False)
 def get_inbox() -> str:
-    """Fetch own email inbox containing invitation replies."""
-    inbox_urls = [
-        f"{STUDY_BASE_URL}/inbox",
-        f"{STUDY_BASE_URL}/emails",
-        f"{STUDY_BASE_URL}/messages",
-    ]
-    for url in inbox_urls:
-        try:
-            txt = _fetch_text(url, timeout=3.0)
-            if txt:
-                return enforce_token_limit(txt)
-        except Exception:
-            continue
-    return enforce_token_limit("")
+    """Fetch the email inbox containing meeting invitations and your replies."""
+    text = _fetch_inbox_text()
+    return enforce_token_limit(text if text else "No emails found.")
 
 
 @mcp_server.tool(structured_output=False)
 def find_meeting_window(question: str) -> str:
-    """Find the earliest window that satisfies the scheduling request.
-    Returns JSON with zero-padded HH:MM strings: {"start":"..","end":".."}."""
+    """Find the earliest meeting window (e.g. 60-min slot on 2026-09-08 between 08:00 and 18:00) when all requested participants and you are free.
+    Returns JSON with zero-padded 24-hour HH:MM strings: {"start":"HH:MM","end":"HH:MM"}."""
     window = _find_earliest_window(question)
     return enforce_token_limit(json.dumps(window, ensure_ascii=True))
 
@@ -769,9 +763,7 @@ async def event(request: Request) -> dict[str, bool]:
     """Telemetry receiver for run progress events."""
     try:
         data = await request.json()
-        problem = data.get("problem", "unknown")
-        attempt = data.get("attempt", 1)
-        print(f"[Telemetry] Problem: {problem} | Attempt: {attempt}")
+        print(f"[Telemetry Event] {json.dumps(data)}")
     except Exception:
         pass
     return {"ok": True}
@@ -782,7 +774,7 @@ async def callback(request: Request) -> dict[str, Any]:
     """Evaluation result JSON receiver."""
     try:
         data = await request.json()
-        print(f"[Evaluation Result] {data}")
+        print(f"[Evaluation Callback] {json.dumps(data)}")
     except Exception:
         pass
     return {"status": "ok"}
