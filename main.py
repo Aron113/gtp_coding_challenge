@@ -13,6 +13,12 @@ from tool_box import answer_question
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0")
 
+class SquareRequest(BaseModel):
+    number: int | float
+
+
+class SquareResponse(BaseModel):
+    answer: int | float
 
 @app.get("/health")
 def health() -> dict[str, str]:
