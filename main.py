@@ -2,7 +2,6 @@ import base64
 import binascii
 import json
 import math
-from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,13 +9,13 @@ from pydantic import BaseModel
 
 from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
-from tool_box import answer_question
+import tool_box
+from fastmcp import FastMCP 
 
-try:
-    from mcp.server.fastmcp import FastMCP
-except ModuleNotFoundError:
-    FastMCP = None
+# 1. Initialize FastMCP Server
+mcp = FastMCP(name="Tool Box Nursery")
 
+<<<<<<< HEAD
 # Real MCP server (JSON-RPC over the Streamable HTTP transport), not a bespoke
 # REST shim - the evaluator connects as an actual MCP client and does the
 # initialize/tools-list/tools-call handshake. stateless_http=True so answers
@@ -61,6 +60,67 @@ app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
 app.include_router(showdown_router)
 if mcp_app is not None:
     app.mount("/mcp", mcp_app)
+=======
+
+# 2. Register explicit MCP Tools
+@mcp.tool(
+    name="get_name",
+    description="Returns the name of the child when asked 'What is your name?'",
+)
+def get_name() -> str:
+    return "toolbox"
+
+
+@mcp.tool(
+    name="calculate",
+    description="Performs arithmetic operations (+, -, *, /) and mixed calculations. Returns the numerical result.",
+)
+def calculate(expression: str) -> str | int | float:
+    return tool_box.solve_arithmetic(expression)
+
+
+@mcp.tool(
+    name="identify_shape",
+    description="Identifies whether a base64-encoded PNG image is a rectangle, triangle, or circle.",
+)
+def identify_shape(image_base64: str) -> str:
+    return tool_box.solve_shape(image_base64)
+
+
+@mcp.tool(
+    name="count_shapes",
+    description="Counts the total number of shapes present in a base64-encoded PNG image.",
+)
+def count_shapes(image_base64: str) -> int:
+    return tool_box.solve_shape_count(image_base64)
+
+
+@mcp.tool(
+    name="answer_question",
+    description="General fallback tool for answering nursery questions about name, math, or shapes.",
+)
+def answer_question(question: str) -> str:
+    return str(tool_box.answer_question(question))
+
+
+# 3. Setup FastMCP Sub-App
+mcp_app = mcp.http_app(path="/")
+
+# 4. Initialize FastAPI with the MCP lifespan manager
+app = FastAPI(
+    title="Tool Box Nursery",
+    version="1.0.0",
+    lifespan=mcp_app.lifespan,
+)
+
+# 5. Include Routers & Mount MCP
+app.include_router(ghost_chains_router)
+app.include_router(showdown_router)
+app.mount("/mcp", mcp_app)
+
+
+# --- Supporting Endpoints ---
+>>>>>>> main
 
 
 class SquareRequest(BaseModel):
