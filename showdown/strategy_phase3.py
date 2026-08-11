@@ -40,12 +40,16 @@ RULES_WITH_LOW_WINS = {"low_ball"}
 # still putting money in multiway does not, and that optimism compounds once
 # per live opponent. A thin margin is how a stack leaks away one defensible
 # call at a time.
-CALL_MARGIN_BASE = 0.14
-CALL_MARGIN_PER_OPPONENT = 0.09
+# Swept over a grid and chosen on held-out seeds rather than the seed they
+# were tuned on. The surface is a broad plateau, not a spike - neighbouring
+# values score within a few legs of these - so they are not balanced on a
+# knife edge.
+CALL_MARGIN_BASE = 0.22
+CALL_MARGIN_PER_OPPONENT = 0.06
 PRE_REVEAL_EXTRA_MARGIN = 0.06  # the community card is still unknown
 IN_POSITION_DISCOUNT = 0.03
 
-VALUE_BAR_BASE = 0.58
+VALUE_BAR_BASE = 0.68
 VALUE_BAR_PER_OPPONENT = 0.10
 RAISE_BAR_BASE = 0.76
 RAISE_BAR_PER_OPPONENT = 0.06
