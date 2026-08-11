@@ -146,30 +146,35 @@ class GhostChainsService:
         descendants = self._reachable(to_user_id)
         cycle_distance = self._shortest_path_length(to_user_id, from_user_id)
 
-        upstream_support = len(ancestors)
-        downstream_support = len(descendants)
-        fan_in = len(self._incoming.get(to_user_id, set()))
-        fan_out = len(self._outgoing.get(from_user_id, set()))
+        upstream_support = len(ancestors) + 1
+        downstream_support = len(descendants) + 1
+        incoming_before = self._incoming.get(to_user_id, set())
+        outgoing_before = self._outgoing.get(from_user_id, set())
+        incoming_after = len(incoming_before | {from_user_id})
+        outgoing_after = len(outgoing_before | {to_user_id})
+
+        closure_mass = upstream_support * downstream_support
+        frontier_mass = incoming_after * outgoing_after
 
         raw = 0.0
-        raw += 0.35 * math.log1p(upstream_support)
-        raw += 0.20 * math.log1p(downstream_support)
-        raw += 0.15 * math.log1p(fan_in)
-        raw += 0.10 * math.log1p(fan_out)
+        raw += 0.90 * math.log1p(closure_mass)
+        raw += 0.35 * math.log1p(frontier_mass)
+        raw += 0.15 * math.log1p(upstream_support + downstream_support)
 
-        if upstream_support and fan_in:
-            raw += 0.15
-        if downstream_support and fan_out:
+        if incoming_after >= 2:
+            raw += 0.18 * math.log1p(incoming_after)
+        if outgoing_after >= 2:
+            raw += 0.12 * math.log1p(outgoing_after)
+        if incoming_after >= 2 and outgoing_after >= 2:
             raw += 0.10
-        if upstream_support and downstream_support:
-            raw += 0.08
 
         if cycle_distance is not None:
-            raw += 0.45
-            raw += 0.15 / (cycle_distance + 1)
-            raw += 0.05 * math.log1p(upstream_support + downstream_support + fan_in)
+            loop_mass = closure_mass + len(self._reverse_reachable(to_user_id)) + len(self._reachable(from_user_id))
+            raw += 1.35
+            raw += 0.45 / (cycle_distance + 1)
+            raw += 0.22 * math.log1p(loop_mass)
 
-        score = 1.0 - math.exp(-raw)
+        score = 1.0 - math.exp(-raw / 3.5)
         return round(max(0.0, min(1.0, score)), 6)
 
     def _reachable(self, start: str) -> set[str]:

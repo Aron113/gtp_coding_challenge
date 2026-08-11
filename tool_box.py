@@ -11,6 +11,7 @@ import tiktoken
 # Encoding requirement from spec: o200k_base
 ENCODING = tiktoken.get_encoding("o200k_base")
 MAX_TOKENS = 1500
+NAME = "toolbox"
 
 
 def enforce_token_limit(response_text: str) -> str:
@@ -103,38 +104,14 @@ def solve_shape_count(image_base64: str) -> int:
 
 
 def solve_arithmetic(text: str) -> int | float:
-    """Evaluates arithmetic expressions with +, -, *, /."""
-    # Normalize unicode symbols to standard Python math operators
-    normalized = (
-        text.replace("×", "*")
-        .replace("x", "*")
-        .replace("÷", "/")
-        .replace("−", "-")
-        .replace("–", "-")
-    )
-
-    # Find the mathematical expression block (e.g., '14 * (3 + 5) / 2')
-    matches = re.findall(r"[\d\.\s\+\-\*\/\(\)]+", normalized)
-    valid_candidates = []
+    """Evaluates arithmetic expressions with mixed operators (+, -, *, /)."""
+    # Strip everything except math characters so surrounding words
+    # ("What is ... ?") don't break the expression into fragments.
+    cleaned = re.sub(r"[^0-9\+\-\*\/\.\(\)]", "", text).strip()
+    result = sympy.sympify(cleaned).evalf()
     
-    for candidate in matches:
-        cand_strip = candidate.strip()
-        # Must contain at least one digit and one operator
-        if re.search(r"\d", cand_strip) and re.search(r"[\+\-\*\/]", cand_strip):
-            valid_candidates.append(cand_strip)
-
-    if not valid_candidates:
-        raise ValueError("No valid arithmetic found")
-
-    # Pick the longest valid candidate
-    expr = max(valid_candidates, key=len)
-    cleaned = re.sub(r"[^0-9\+\-\*\/\.\(\) ]", "", expr).strip()
-
-    # Sympy evaluation
-    parsed = sympy.sympify(cleaned, evaluate=True)
-    result = float(parsed.evalf())
-
-    if result.is_integer():
+    # Return int if it is an exact integer, else float
+    if float(result).is_integer():
         return int(result)
     return round(result, 6)
 
@@ -145,7 +122,7 @@ def answer_question(payload: Any) -> Any:
     Accepts text strings, dictionaries, or JSON payloads.
     """
     if payload is None:
-        return enforce_token_limit("Pip")
+        return NAME
 
     # Extract query text if payload is a dict / JSON object
     if isinstance(payload, dict):
@@ -160,7 +137,7 @@ def answer_question(payload: Any) -> Any:
         )
         if "image" in payload or "image_base64" in payload:
             b64 = payload.get("image") or payload.get("image_base64")
-            if any(k in text.lower() for k in ["count", "how many", "number of"]):
+            if "how many" in text.lower() or "count" in text.lower():
                 return solve_shape_count(b64)
             return enforce_token_limit(solve_shape(b64))
     else:
@@ -169,8 +146,8 @@ def answer_question(payload: Any) -> Any:
     text_lower = text.lower()
 
     # 1. Name query
-    if any(k in text_lower for k in ["your name", "what is your name", "who are you", "called?"]):
-        return enforce_token_limit("Pip")
+    if "your name" in text_lower or "what is your name" in text_lower or "who are you" in text_lower:
+        return enforce_token_limit(NAME)
 
     # 2. Shape / Shape Count query with base64 embedded in prompt
     b64_match = re.search(r"(?:iVBORw0KGgo[A-Za-z0-9+/=]+|[A-Za-z0-9+/]{60,}={0,2})", text)
@@ -189,4 +166,4 @@ def answer_question(payload: Any) -> Any:
             pass
 
     # Default fallback
-    return enforce_token_limit("Pip")
+    return enforce_token_limit(NAME)
