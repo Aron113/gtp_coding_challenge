@@ -14,7 +14,10 @@ router = APIRouter()
 def move(payload: MoveRequest) -> MoveResponse:
     response = choose_move(payload)
     logger.info(
-        "match=%s hand=%s round=%s number=%s community=%s action=%s amount=%s",
+        "phase=%s rule=%s leg=%s match=%s hand=%s round=%s number=%s community=%s action=%s amount=%s",
+        payload.phase,
+        payload.table_rule,
+        payload.leg_number,
         payload.match_id,
         payload.hand_number,
         payload.round,

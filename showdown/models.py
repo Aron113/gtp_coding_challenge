@@ -60,9 +60,10 @@ class MoveRequest(BaseModel):
     players: list[PlayerState]
     current_hand_actions: list[HandAction] = Field(default_factory=list)
     recent_hands: list[RecentHand] = Field(default_factory=list)
+    leg_number: int | None = None
+    total_legs: int | None = None
 
 
 class MoveResponse(BaseModel):
     action: ActionName
     amount: int | None = None
-
