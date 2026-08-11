@@ -21,19 +21,17 @@ except ModuleNotFoundError:
 # REST shim - the evaluator connects as an actual MCP client and does the
 # initialize/tools-list/tools-call handshake. stateless_http=True so answers
 # don't depend on in-memory session state surviving across requests/workers.
-if FastMCP is not None:
-    mcp_server = FastMCP(
-        name="Tool Box Nursery",
-        instructions=(
-            "A nursery-stage assistant. Call `ask` with the question text "
-            "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
-            "'How many shapes are in this image?'). For shape questions, either "
-            "embed the base64-encoded PNG directly in `question` or pass it via "
-            "`image`."
-        ),
-        stateless_http=True,
-        streamable_http_path="/",
-    )
+mcp_server = FastMCP(
+    name="Tool Box Nursery",
+    instructions=(
+        "A nursery-stage assistant. Call `ask` with the question text "
+        "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
+        "'How many shapes are in this image?'). For shape questions, either "
+        "embed the base64-encoded PNG directly in `question` or pass it via "
+        "`image`."
+    ),
+    stateless_http=True,
+)
 
     @mcp_server.tool()
     def ask(question: str, image: str | None = None) -> str | int | float:
@@ -62,8 +60,6 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
 app.include_router(showdown_router)
-if mcp_app is not None:
-    app.mount("/mcp", mcp_app)
 
 
 class SquareRequest(BaseModel):
@@ -177,3 +173,15 @@ def solve(request: SolveRequest) -> dict:
         "adaptOutput": adapt_output,
         "sloOutput": slo_output,
     }
+
+
+# Mounted last, and at "/" rather than "/mcp": FastMCP's streamable_http_app()
+# only defines a route at its internal streamable_http_path (default "/mcp").
+# Mounting *that* app at "/mcp" would require Starlette to strip the "/mcp"
+# prefix and match the remainder against "/", which only matches paths with a
+# trailing slash ("/mcp/") - a bare POST /mcp 307-redirects to "/mcp/" first,
+# and most HTTP/MCP clients refuse to auto-follow a 307 on a POST, so the
+# request just hangs. Mounting at "/" instead means "/mcp" matches the sub-app's
+# own "/mcp" route directly, with no redirect. Must come after every other
+# route above, since a "/" mount would otherwise shadow all of them.
+app.mount("/", mcp_app)
