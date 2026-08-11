@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import math
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 
@@ -84,10 +84,12 @@ class GhostChainsService:
         created_at = _parse_iso_datetime(transaction.createdAt)
         canonical_payload = self._canonical_payload(transaction)
 
+        # Duplicate txId: return the original score and mutate nothing. This
+        # holds even when the payload differs — a 409 would fail the whole
+        # batch after earlier transactions already committed, losing their
+        # scores; the txId is the identity, so first write wins.
         cached = self._seen_transactions.get(transaction.txId)
         if cached is not None:
-            if cached.canonical_payload != canonical_payload:
-                raise HTTPException(status_code=409, detail="txId already exists with a different payload")
             return GhostChainsTransactionResult(txId=transaction.txId, riskScore=cached.risk_score)
 
         self._expire_state(created_at)
