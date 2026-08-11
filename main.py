@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
 from tool_box import answer_question
 

@@ -23,35 +23,48 @@ def enforce_token_limit(response_text: str) -> str:
 
 
 def _process_image_contours(image_base64: str):
-    """Decodes base64 PNG and returns valid contours."""
-    # Strip any data URI prefix if present
+    """Decodes base64 PNG, properly handles transparency/background, and returns valid contours."""
     if "base64," in image_base64:
         image_base64 = image_base64.split("base64,")[1]
 
-    # Clean whitespace/newlines
-    image_base64 = re.sub(r"\s+", "", image_base64)
-
+    # Clean whitespace, newlines, and quotes
+    image_base64 = re.sub(r"[^A-Za-z0-9+/=]", "", image_base64)
     image_bytes = base64.b64decode(image_base64)
-    pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    cv_img = np.array(pil_image)
-    gray = cv2.cvtColor(cv_img, cv2.COLOR_RGB2GRAY)
-
-    # Threshold image to isolate shapes
-    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-
-    # Invert if background was detected as foreground
-    if np.sum(thresh == 255) > np.sum(thresh == 0):
-        thresh = cv2.bitwise_not(thresh)
-
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Filter noise
-    return [c for c in contours if cv2.contourArea(c) > 40]
+    pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    img_np = np.array(pil_image)
+
+    # 1. Handle Alpha Channel (if image is transparent)
+    alpha = img_np[:, :, 3]
+    if np.any(alpha < 250):
+        # Foreground is where alpha > 128
+        mask = (alpha > 128).astype(np.uint8) * 255
+    else:
+        # 2. Standard Grayscale Thresholding for solid backgrounds
+        gray = cv2.cvtColor(img_np[:, :, :3], cv2.COLOR_RGB2GRAY)
+        
+        # Check corner pixels to determine background tone
+        corners = [gray[0, 0], gray[0, -1], gray[-1, 0], gray[-1, -1]]
+        bg_is_light = np.median(corners) > 127
+        
+        if bg_is_light:
+            _, mask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
+        else:
+            _, mask = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Filter noise (contours with area >= 30 px)
+    return [c for c in contours if cv2.contourArea(c) >= 30]
 
 
 def _classify_contour(contour) -> str:
     """Classifies a contour into triangle, rectangle, or circle."""
     peri = cv2.arcLength(contour, True)
+    if peri == 0:
+        return "circle"
+    
+    # Polygon approximation
     approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
     num_vertices = len(approx)
 
@@ -60,10 +73,10 @@ def _classify_contour(contour) -> str:
     elif num_vertices == 4:
         return "rectangle"
     else:
-        # Check circularity metric: 4 * pi * Area / Perimeter^2
+        # Circularity metric: 4 * pi * Area / Perimeter^2
         area = cv2.contourArea(contour)
-        circularity = (4 * np.pi * area) / (peri * peri) if peri > 0 else 0
-        if circularity > 0.60 or num_vertices > 4:
+        circularity = (4 * np.pi * area) / (peri * peri)
+        if circularity >= 0.65 or num_vertices >= 5:
             return "circle"
         return "rectangle"
 
@@ -73,11 +86,12 @@ def solve_shape(image_base64: str) -> str:
     try:
         contours = _process_image_contours(image_base64)
         if not contours:
-            return "rectangle"
+            return "circle"
+        # Find dominant shape by area
         primary = max(contours, key=cv2.contourArea)
         return _classify_contour(primary)
     except Exception:
-        return "rectangle"
+        return "circle"
 
 
 def solve_shape_count(image_base64: str) -> int:
@@ -99,7 +113,7 @@ def solve_arithmetic(text: str) -> int | float:
     # Return int if it is an exact integer, else float
     if float(result).is_integer():
         return int(result)
-    return float(result)
+    return round(result, 6)
 
 
 def answer_question(payload: Any) -> Any:
@@ -118,14 +132,14 @@ def answer_question(payload: Any) -> Any:
             or payload.get("text")
             or payload.get("message")
             or payload.get("query")
+            or payload.get("input")
             or ""
         )
-        # Check if direct base64 image or shape payload is provided in dict
         if "image" in payload or "image_base64" in payload:
             b64 = payload.get("image") or payload.get("image_base64")
             if "how many" in text.lower() or "count" in text.lower():
                 return solve_shape_count(b64)
-            return solve_shape(b64)
+            return enforce_token_limit(solve_shape(b64))
     else:
         text = str(payload)
 
@@ -136,17 +150,16 @@ def answer_question(payload: Any) -> Any:
         return enforce_token_limit(NAME)
 
     # 2. Shape / Shape Count query with base64 embedded in prompt
-    # Long base64 PNG strings typically start with iVBORw0KGgo
-    b64_match = re.search(r"(?:iVBORw0KGgo[A-Za-z0-9+/=]+|[A-Za-z0-9+/]{80,}={0,2})", text)
+    b64_match = re.search(r"(?:iVBORw0KGgo[A-Za-z0-9+/=]+|[A-Za-z0-9+/]{60,}={0,2})", text)
     if b64_match or "shape" in text_lower:
         if b64_match:
             b64_data = b64_match.group(0)
-            if "how many" in text_lower or "count" in text_lower:
+            if any(k in text_lower for k in ["count", "how many", "number of", "total"]):
                 return solve_shape_count(b64_data)
             return enforce_token_limit(solve_shape(b64_data))
 
     # 3. Arithmetic / Sums query (+, -, *, /)
-    if any(op in text for op in ["+", "-", "*", "/"]) or re.search(r"\d", text):
+    if any(op in text for op in ["+", "-", "*", "/", "×", "÷"]) or re.search(r"\d", text):
         try:
             return solve_arithmetic(text)
         except Exception:
