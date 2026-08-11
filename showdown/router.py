@@ -10,11 +10,6 @@ logger = logging.getLogger("showdown")
 router = APIRouter()
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
 @router.post("/move", response_model=MoveResponse)
 def move(payload: MoveRequest) -> MoveResponse:
     response = choose_move(payload)
