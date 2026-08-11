@@ -14,6 +14,16 @@ class OpponentStats:
     sample_size: int = 0
 
 
+@dataclass(slots=True)
+class PlayerTrend:
+    seat: int
+    name: str
+    pre_raise_rate: float = 0.0
+    post_bet_rate: float = 0.0
+    fold_rate: float = 0.0
+    sample_size: int = 0
+
+
 def find_player(payload: MoveRequest, seat: int):
     for player in payload.players:
         if player.seat == seat:
@@ -26,6 +36,118 @@ def find_opponent(payload: MoveRequest):
         if player.seat != payload.your_seat:
             return player
     raise ValueError("Opponent not found")
+
+
+def live_players(payload: MoveRequest):
+    return [player for player in payload.players if not player.folded and not player.busted]
+
+
+def live_opponents(payload: MoveRequest):
+    return [
+        player
+        for player in payload.players
+        if player.seat != payload.your_seat and not player.folded and not player.busted
+    ]
+
+
+def active_seats(payload: MoveRequest) -> list[int]:
+    return [player.seat for player in payload.players if not player.busted]
+
+
+def players_yet_to_act(payload: MoveRequest) -> int:
+    live_seat_set = {player.seat for player in live_players(payload)}
+    if payload.your_seat not in live_seat_set:
+        return 0
+
+    if payload.round == "pre_reveal":
+        start_seat = _next_active_seat(payload, _big_blind_seat(payload))
+    else:
+        start_seat = _next_active_seat(payload, payload.button_seat)
+
+    action_order = _seat_cycle_from(payload, start_seat)
+    round_actions = [a for a in payload.current_hand_actions if a.round == payload.round]
+    acted_seats = {action.seat for action in round_actions}
+    if not round_actions:
+        acted_before_you = 0
+    else:
+        try:
+            your_index = action_order.index(payload.your_seat)
+        except ValueError:
+            return 0
+        acted_before_you = sum(
+            1 for seat in action_order[:your_index] if seat in acted_seats or seat not in live_seat_set
+        )
+    remaining = max(0, len(action_order) - acted_before_you - 1)
+    return remaining
+
+
+def table_leader_delta(payload: MoveRequest) -> int:
+    return max(player.chip_delta for player in payload.players)
+
+
+def your_rank(payload: MoveRequest) -> int:
+    ordered = sorted((player.chip_delta for player in payload.players), reverse=True)
+    your_delta = next(player.chip_delta for player in payload.players if player.seat == payload.your_seat)
+    return 1 + sum(1 for delta in ordered if delta > your_delta)
+
+
+def build_player_trends(payload: MoveRequest) -> dict[int, PlayerTrend]:
+    trends: dict[int, PlayerTrend] = {
+        player.seat: PlayerTrend(seat=player.seat, name=player.name)
+        for player in payload.players
+        if player.seat != payload.your_seat
+    }
+    if not payload.recent_hands:
+        return trends
+
+    per_seat_hand_counts = {seat: 0 for seat in trends}
+    for hand in payload.recent_hands:
+        seen_seats = set()
+        for action in hand.actions:
+            if action.seat not in trends:
+                continue
+            seen_seats.add(action.seat)
+            trend = trends[action.seat]
+            if action.round == "pre_reveal" and action.action == "raise":
+                trend.pre_raise_rate += 1
+            if action.round == "post_reveal" and action.action in {"bet", "raise"}:
+                trend.post_bet_rate += 1
+        for seat in seen_seats:
+            per_seat_hand_counts[seat] += 1
+            seat_actions = [a for a in hand.actions if a.seat == seat]
+            if seat_actions and seat_actions[-1].action == "fold":
+                trends[seat].fold_rate += 1
+
+    for seat, trend in trends.items():
+        count = per_seat_hand_counts[seat]
+        trend.sample_size = count
+        if count > 0:
+            trend.pre_raise_rate /= count
+            trend.post_bet_rate /= count
+            trend.fold_rate /= count
+    return trends
+
+
+def _big_blind_seat(payload: MoveRequest) -> int:
+    return _next_active_seat(payload, _next_active_seat(payload, payload.button_seat))
+
+
+def _next_active_seat(payload: MoveRequest, seat: int) -> int:
+    seats = active_seats(payload)
+    ordered = sorted(seats)
+    for candidate in ordered:
+        if candidate > seat:
+            return candidate
+    return ordered[0]
+
+
+def _seat_cycle_from(payload: MoveRequest, start_seat: int) -> list[int]:
+    seats = active_seats(payload)
+    ordered = sorted(seats)
+    if start_seat not in ordered:
+        return ordered
+    start_index = ordered.index(start_seat)
+    return ordered[start_index:] + ordered[:start_index]
 
 
 def safe_fallback(payload: MoveRequest) -> MoveResponse:
