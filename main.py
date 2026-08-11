@@ -6,56 +6,64 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
 from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
 from tool_box import answer_question
 
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:
+    FastMCP = None
+
 # Real MCP server (JSON-RPC over the Streamable HTTP transport), not a bespoke
 # REST shim - the evaluator connects as an actual MCP client and does the
 # initialize/tools-list/tools-call handshake. stateless_http=True so answers
 # don't depend on in-memory session state surviving across requests/workers.
-mcp_server = FastMCP(
-    name="Tool Box Nursery",
-    instructions=(
-        "A nursery-stage assistant. Call `ask` with the question text "
-        "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
-        "'How many shapes are in this image?'). For shape questions, either "
-        "embed the base64-encoded PNG directly in `question` or pass it via "
-        "`image`."
-    ),
-    stateless_http=True,
-    streamable_http_path="/",
-)
+if FastMCP is not None:
+    mcp_server = FastMCP(
+        name="Tool Box Nursery",
+        instructions=(
+            "A nursery-stage assistant. Call `ask` with the question text "
+            "(e.g. 'What is your name?', 'What is 2 + 2?', 'What shape is this?', "
+            "'How many shapes are in this image?'). For shape questions, either "
+            "embed the base64-encoded PNG directly in `question` or pass it via "
+            "`image`."
+        ),
+        stateless_http=True,
+        streamable_http_path="/",
+    )
 
+    @mcp_server.tool()
+    def ask(question: str, image: str | None = None) -> str | int | float:
+        """Answer a nursery question: the bot's name, arithmetic (+, -, *, /),
+        or the shape / shape count in a base64-encoded PNG. Returns the bot's
+        name as a string, an arithmetic result as a number, a shape as one of
+        "rectangle", "triangle", "circle", or a shape count as an integer."""
+        payload: dict[str, Any] = {"question": question}
+        if image:
+            payload["image"] = image
+        return answer_question(payload)
 
-@mcp_server.tool()
-def ask(question: str, image: str | None = None) -> str | int | float:
-    """Answer a nursery question: the bot's name, arithmetic (+, -, *, /),
-    or the shape / shape count in a base64-encoded PNG. Returns the bot's
-    name as a string, an arithmetic result as a number, a shape as one of
-    "rectangle", "triangle", "circle", or a shape count as an integer."""
-    payload: dict[str, Any] = {"question": question}
-    if image:
-        payload["image"] = image
-    return answer_question(payload)
-
-
-mcp_app = mcp_server.streamable_http_app()
+    mcp_app = mcp_server.streamable_http_app()
+else:
+    mcp_server = None
+    mcp_app = None
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     async with AsyncExitStack() as stack:
-        await stack.enter_async_context(mcp_server.session_manager.run())
+        if mcp_server is not None:
+            await stack.enter_async_context(mcp_server.session_manager.run())
         yield
 
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0", lifespan=lifespan)
 app.include_router(showdown_router)
-app.mount("/mcp", mcp_app)
+if mcp_app is not None:
+    app.mount("/mcp", mcp_app)
 
 
 class SquareRequest(BaseModel):
