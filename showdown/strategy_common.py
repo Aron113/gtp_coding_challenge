@@ -85,6 +85,11 @@ def table_leader_delta(payload: MoveRequest) -> int:
     return max(player.chip_delta for player in payload.players)
 
 
+def leader_seats(payload: MoveRequest) -> list[int]:
+    leader_delta = table_leader_delta(payload)
+    return [player.seat for player in payload.players if player.chip_delta == leader_delta]
+
+
 def your_rank(payload: MoveRequest) -> int:
     ordered = sorted((player.chip_delta for player in payload.players), reverse=True)
     your_delta = next(player.chip_delta for player in payload.players if player.seat == payload.your_seat)
