@@ -1,3 +1,6 @@
-fastapi
 gunicorn
 uvicorn[standard]
+mcp
+starlette
+numpy
+opencv-python-headless
