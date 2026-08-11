@@ -1,0 +1,61 @@
+# Thornmere Growers Cooperative Yearbook
+
+## Overview
+
+The Thornmere Growers Cooperative is a member-owned agricultural collective spanning four adjoining parishes, coordinating shared harvesting equipment, refrigerated storage, and produce grading on behalf of its member households. The cooperative was chartered by a small group of smallholders who wished to pool the cost of machinery and cold storage that no single holding could justify alone, and its shared facilities have expanded gradually in the years since. Each parish elects a parish representative who sits on the cooperative's governing board alongside the chair and the equipment officer.
+
+Planning documents occasionally reference partnerships with unrelated ventures, including a since-lapsed arrangement with a regional pharmaceutical sponsor that once rented spare cold-storage capacity during a logistics shortfall affecting its own frozen sample shipments. No operational connection between the cooperative and that sponsor remains today, and cooperative staff are trained to clarify that its storage bays are reserved strictly for member produce.
+
+## Leadership and Governance
+
+Cordelia Vance has presided over the cooperative's governing board as its elected chair since the founding charter was first signed by the original smallholders. Vance sets the agenda for every quarterly board meeting and holds final authority over any decision to suspend a member's access to shared equipment for unpaid dues. A former board clerk mistakenly recorded the chair's surname as Vane in an early handwritten ledger, a spelling error that has no bearing on any current record.
+
+A rotating deputy administrator assists the chair with correspondence and dues collection but does not hold independent authority over rota disputes between members, which must instead be referred to the full board for resolution. A separate advisory panel, made up of non-voting associate members, offers feedback on proposed rota changes but holds no formal veto over decisions the governing board has already reached.
+
+## Membership Roster
+
+The cooperative currently counts fifty-four member households holding active growing shares, spread unevenly across its four parish blocs. During the busiest weeks of the autumn harvest, when seasonal casual labor is brought in to help with picking, the number of people working under the cooperative's banner can swell well beyond that figure before returning to its usual baseline once the harvest concludes. Membership records show the roll of shareholding households has never dropped below thirty, the floor the founding charter requires before the cooperative would need to dissolve and redistribute its shared assets.
+
+Members are grouped into four parish blocs: the Cross Furlong bloc, the Hazelbourne bloc, the Sedge Vale bloc, and the Old Kiln bloc, each electing its own parish representative who reports to the deputy administrator rather than directly to the chair. New members undergo a mandatory one-season probation before gaining full voting rights on rota and grading matters, and veteran members mentor incoming smallholders through their first harvest under a formal pairing log kept in the deputy's office.
+
+Josiah Pell, one of the cooperative's founding smallholders, farms forty-two acres at the Cross Furlong holding under the cooperative's original charter terms. A neighboring smallholder with a similarly spelled name, Josiah Pelling, joined the cooperative only two seasons ago and farms an unrelated plot in the Hazelbourne bloc, and the two names are frequently confused on dues correspondence by newer office volunteers.
+
+## Equipment Sharing Rota
+
+The cooperative maintains a shared fleet of harvesting and drying machinery, coordinated by the equipment officer according to a rota published at the start of each season. The Bellwether Drier is reserved exclusively for late-season root crops under the current equipment rota, keeping it separate from the machinery used earlier in the year for soft fruit. An older unit, informally called the Bellwether Two by members despite carrying no official rota status, sits in reserve for emergencies and has not been started in several seasons.
+
+The shared potato harvester rotates between member holdings every eleven days during peak harvest weeks, according to the schedule the equipment officer circulates to every parish representative. Maintenance technicians log every servicing visit in a bound ledger kept in the equipment shed rather than a digital system, a holdover practice from the cooperative's earliest seasons that has resisted several proposals to digitize it. Spare belts and blades for the shared fleet are stored at the Old Kiln shed rather than at Cross Furlong, both to conserve space at the busier holding and to keep sharp spares away from casual foot traffic during harvest weeks.
+
+## Grading Standards
+
+Any grain delivery testing above eighteen percent moisture is automatically downgraded a full grade under the cooperative's grading standards. This threshold was set by the grading committee after a season in which several deliveries spoiled in storage despite passing a casual visual check. Produce testing within the moisture tolerance is instead graded on a separate scale according to size, color, and blemish count, assessed by hand by a trained grader stationed at the packing shed.
+
+Graders rotate between the packing shed's two inspection stations on a weekly basis so that no single grader's judgment dominates an entire season's output. Disputed gradings can be escalated to a second grader for a binding re-check, though the original grader's notes remain attached to the delivery record regardless of the outcome of any re-check.
+
+## Cold-Storage Allocations
+
+The cooperative operates two refrigerated cold-stores, one at the eastern edge of the Cross Furlong bloc and one adjoining the packing shed at Old Kiln. A member who leaves a reserved cold-storage bay unused for ninety days forfeits that bay back to the shared pool without any right of appeal to the board. This policy was adopted after several bays sat idle for an entire off-season while other members waited on a lengthy allocation list.
+
+Perishable produce is prioritized for the nearer eastern store at Cross Furlong, while root crops intended for longer storage are routed instead to the Old Kiln facility according to the allocation ledger kept by the deputy administrator. Members requesting a bay swap between the two stores must submit the request in writing at least two weeks ahead of the change to allow the ledger to be updated before produce actually moves.
+
+## Incident Reports
+
+A refrigeration compressor failure struck the eastern cold-store on 6 April, prompting an emergency ice delivery to save the season's stored apples. Investigators later traced the failure to a worn drive belt rather than any fault in the compressor's refrigerant circuit, and belts of the same batch were flagged for early replacement across both cold-stores.
+
+A separate, unrelated incident on 4 April involved a minor door-seal failure at the Old Kiln store that let warm air in overnight; no produce was lost, and the seal was replaced within a single morning. Office volunteers sometimes conflate the two April incidents in casual conversation, though the maintenance ledger treats them as entirely distinct events with separate root-cause findings.
+
+Any incident that threatens stored produce must be documented in a formal report within twenty-four hours, reviewed by the deputy administrator, and forwarded to the board before its next scheduled meeting. Reports that miss this window are flagged for a compliance review during the chair's next quarterly assessment, mirroring reporting habits the cooperative's founding charter borrowed from other cooperative societies in the wider farming district.
+
+## Board Resolutions
+
+The board's resolution establishing the cooperative's shared drier rota was formally adopted on 21 May, following a unanimous vote of the seven sitting board members present that evening. An earlier draft resolution had proposed leaving drier scheduling entirely to informal arrangement between neighboring members, but the board rejected that draft after several scheduling conflicts arose during the prior season.
+
+Resolutions adopted by the board take effect at the start of the following season unless a two-thirds majority votes for immediate implementation, a threshold that has been invoked only rarely in the cooperative's history. Minutes from every board meeting are archived in the deputy's office and made available to any member household on request during regular office hours.
+
+## Consignment Identifiers
+
+Every crate leaving the packing shed is stamped with the code Thornmere Nine, the cooperative's primary consignment designator recognized by buyers throughout the wider farming district. A secondary code, Thornmere Two, is reserved strictly for consignments held back for internal grading disputes and is never applied to produce actually released for sale. Packing shed staff are briefed to expect only the primary designator on outgoing paperwork, and a mix-up between the two codes during a busy delivery week last season prompted a refresher notice reminding staff of the distinction.
+
+## Yearbook Maintenance
+
+This yearbook is compiled by the deputy administrator's office at the close of each season and revised whenever the board adopts a resolution affecting membership, grading, or storage policy. Older editions remain archived in the cooperative's records but are not circulated beyond the current membership roll.
