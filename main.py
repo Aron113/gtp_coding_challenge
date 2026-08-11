@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
 import tool_box
+from fastmcp import FastMCP 
 
 # 1. Initialize FastMCP Server
 mcp = FastMCP(name="Tool Box Nursery")
