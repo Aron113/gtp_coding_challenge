@@ -8,10 +8,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
+from ghost_chains import router as ghost_chains_router
 from showdown.router import router as showdown_router
 from tool_box import answer_question
 
 app = FastAPI(title="Tool Box Nursery", version="1.0.0")
+app.include_router(ghost_chains_router)
 app.include_router(showdown_router)
 
 
