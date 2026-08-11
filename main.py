@@ -34,6 +34,7 @@ from tool_box import (
 ENCODING = tiktoken.get_encoding("o200k_base")
 RETRIEVAL_TOKEN_BUDGET = 900
 STUDY_BASE_URL = "https://tool-box-2591eaa24fa3.herokuapp.com"
+INBOX_URL = f"{STUDY_BASE_URL}/emails"
 STUDY_URLS = [
     f"{STUDY_BASE_URL}/study-materials",
     f"{STUDY_BASE_URL}/study-materials/1",
@@ -403,6 +404,161 @@ def _next_hop_from_question(
     merged_visited.add(current)
     return _best_next_hop(adjacency, tolls, current, destination, hops_left, merged_visited)
 
+
+def _hhmm_to_minutes(value: str) -> int:
+    hh, mm = value.strip().split(":", 1)
+    return int(hh) * 60 + int(mm)
+
+
+def _minutes_to_hhmm(value: int) -> str:
+    hh = value // 60
+    mm = value % 60
+    return f"{hh:02d}:{mm:02d}"
+
+
+def _extract_meeting_request(question: str) -> dict[str, Any]:
+    day_match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", question)
+    day = day_match.group(1) if day_match else ""
+
+    duration_match = re.search(r"(\d+)\s*[- ]?minute", question, flags=re.IGNORECASE)
+    duration = int(duration_match.group(1)) if duration_match else 60
+
+    between_match = re.search(
+        r"between\s+(\d{1,2}:\d{2})\s+and\s+(\d{1,2}:\d{2})",
+        question,
+        flags=re.IGNORECASE,
+    )
+    start_bound = between_match.group(1) if between_match else "08:00"
+    end_bound = between_match.group(2) if between_match else "18:00"
+
+    people: list[str] = []
+    people_match = re.search(
+        r"you\s+and\s+(.+?)\s+are\s+all\s+free",
+        question,
+        flags=re.IGNORECASE,
+    )
+    if people_match:
+        segment = people_match.group(1)
+        segment = segment.replace(" and ", ",")
+        candidates = [p.strip().lower() for p in segment.split(",") if p.strip()]
+        people = [p for p in candidates if p != "you"]
+
+    return {
+        "day": day,
+        "duration": duration,
+        "start": start_bound,
+        "end": end_bound,
+        "people": people,
+    }
+
+
+@lru_cache(maxsize=512)
+def _fetch_schedule(person: str, day: str) -> list[tuple[int, int]]:
+    url = f"{STUDY_BASE_URL}/schedule/{quote_plus(person)}/{quote_plus(day)}"
+    payload = _fetch_text(url, timeout=3.0)
+    data = json.loads(payload)
+    busy = data.get("busy", []) if isinstance(data, dict) else []
+    intervals: list[tuple[int, int]] = []
+    for item in busy:
+        if not isinstance(item, list) or len(item) != 2:
+            continue
+        try:
+            start = _hhmm_to_minutes(str(item[0]))
+            end = _hhmm_to_minutes(str(item[1]))
+        except Exception:
+            continue
+        if end > start:
+            intervals.append((start, end))
+    return intervals
+
+
+@lru_cache(maxsize=64)
+def _fetch_inbox_text() -> str:
+    return _fetch_text(INBOX_URL, timeout=3.0)
+
+
+def _extract_self_busy(day: str) -> list[tuple[int, int]]:
+    text = _fetch_inbox_text()
+    blocks = [b.strip() for b in re.split(r"\n\s*\n+", text) if b.strip()]
+    intervals: list[tuple[int, int]] = []
+
+    for block in blocks:
+        if "Response:" not in block or "When:" not in block:
+            continue
+        response_match = re.search(r"Response:\s*([A-Z]+)", block)
+        when_match = re.search(
+            r"When:\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})-(\d{2}:\d{2})",
+            block,
+        )
+        if not response_match or not when_match:
+            continue
+        if response_match.group(1).upper() != "ACCEPTED":
+            continue
+        if when_match.group(1) != day:
+            continue
+        start = _hhmm_to_minutes(when_match.group(2))
+        end = _hhmm_to_minutes(when_match.group(3))
+        if end > start:
+            intervals.append((start, end))
+
+    return intervals
+
+
+def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    if not intervals:
+        return []
+    ordered = sorted(intervals)
+    merged = [ordered[0]]
+    for start, end in ordered[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _is_slot_free(start: int, end: int, merged_busy: list[tuple[int, int]]) -> bool:
+    for busy_start, busy_end in merged_busy:
+        if start < busy_end and end > busy_start:
+            return False
+    return True
+
+
+def _find_earliest_window(question: str) -> dict[str, str]:
+    req = _extract_meeting_request(question)
+    day = req["day"]
+    start_bound = _hhmm_to_minutes(req["start"])
+    end_bound = _hhmm_to_minutes(req["end"])
+    duration = int(req["duration"])
+
+    all_busy: list[tuple[int, int]] = []
+    all_busy.extend(_extract_self_busy(day))
+    for person in req["people"]:
+        all_busy.extend(_fetch_schedule(person, day))
+
+    merged_busy = _merge_intervals(all_busy)
+
+    # Candidate starts are on :00 or :30 only.
+    start = start_bound
+    if start % 30 != 0:
+        start += 30 - (start % 30)
+
+    while start + duration <= end_bound:
+        end = start + duration
+        if _is_slot_free(start, end, merged_busy):
+            return {
+                "start": _minutes_to_hhmm(start),
+                "end": _minutes_to_hhmm(end),
+            }
+        start += 30
+
+    # No valid window within bounds; return the bound edge to keep shape stable.
+    return {
+        "start": _minutes_to_hhmm(start_bound),
+        "end": _minutes_to_hhmm(start_bound),
+    }
+
 # Real MCP server (JSON-RPC over the Streamable HTTP transport), not a bespoke
 # REST shim - the evaluator connects as an actual MCP client and does the
 # initialize/tools-list/tools-call handshake. stateless_http=True so answers
@@ -417,10 +573,12 @@ def _next_hop_from_question(
 mcp_server = FastMCP(
     name="Tool Box Nursery",
     instructions=(
-        "A nursery-stage assistant. Use `get_name` for its name, `calculate` "
+        "A multi-stage assistant. Use `get_name` for its name, `calculate` "
         "for arithmetic, `identify_shape` for what shape a base64 PNG shows, "
-        "and `count_shapes` for how many shapes a base64 PNG contains. `ask` "
-        "answers any of the above from the raw question text."
+        "`count_shapes` for how many shapes a base64 PNG contains, "
+        "`retrieve_passages` for study revision chunks, `next_hop` for graph "
+        "routing, and `find_meeting_window` for calendar scheduling. `ask` "
+        "auto-routes from raw question text."
     ),
     stateless_http=True,
     transport_security=TransportSecuritySettings(
@@ -467,6 +625,8 @@ def ask(question: str, image: str | None = None) -> str:
     arithmetic (+, -, *, /), or the shape / shape count of a base64-encoded
     PNG. Pass the PNG via `image`, or embedded in `question`."""
     lower = question.lower()
+    if any(k in lower for k in ["earliest", "window", "all free", "between", "lunch", "24-hour"]):
+        return enforce_token_limit(json.dumps(_find_earliest_window(question), ensure_ascii=True))
     if any(k in lower for k in ["map_id", "get from", "from ", " to "]):
         return enforce_token_limit(_next_hop_from_question(question))
     if any(k in lower for k in ["study", "material", "revise", "exam", "when was", "where was", "who was"]):
@@ -508,6 +668,14 @@ def next_hop(
         visited=visited_set,
     )
     return enforce_token_limit(hop)
+
+
+@mcp_server.tool(structured_output=False)
+def find_meeting_window(question: str) -> str:
+    """Find the earliest window that satisfies the scheduling request.
+    Returns JSON with zero-padded HH:MM strings: {"start":"..","end":".."}."""
+    window = _find_earliest_window(question)
+    return enforce_token_limit(json.dumps(window, ensure_ascii=True))
 
 
 mcp_app = mcp_server.streamable_http_app()
